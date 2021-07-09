@@ -4,3 +4,6 @@ Makefile
 cmake_install.cmake
 lib*.a
 run
+.project
+.cproject
+.settings/
