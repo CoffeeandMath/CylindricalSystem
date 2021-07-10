@@ -179,7 +179,7 @@ void ElasticProblem::assemble_system()
 			double R = 1.2;
 
 			const auto &x_q = fe_values.quadrature_point(q_index);
-			double Rs = 1.0 - 0.3*pow(x_q[0],2.0);
+			double Rs = 1.0 - 1.0*pow(x_q[0]-0.5,2.0);
 			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
 			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index],2.0) - pow(Rs,2.0));
 
@@ -310,11 +310,32 @@ void ElasticProblem::setup_constraints(){
 
 	for (unsigned int i = 0; i < ndofs; i++) {
 
-		/*
+		///*
 
-		if (support_points[i].square() < 1.0e-6) {
+		if (i==2){
 			if (is_r_comp[i]) {
-				constraints.add_line(i);
+				std::cout << "2 is an r comp" << std::endl;
+			} else if (is_z_comp[i]) {
+				std::cout << "2 is an z comp" << std::endl;
+			} else {
+				std::cout << "wtf is 2" << std::endl;
+			}
+			std::cout << support_points[i][0] << std::endl;
+		} else if (i == 3) {
+			if (is_r_comp[i]) {
+				std::cout << "3 is an r comp" << std::endl;
+			} else if (is_z_comp[i]) {
+				std::cout << "3 is an z comp" << std::endl;
+			} else {
+				std::cout << "wtf is 3" << std::endl;
+			}
+			std::cout << support_points[i][0] << std::endl;
+		}
+
+		if (fabs(support_points[i][0]) < 1.0e-8) {
+			std::cout << support_points[i] << std::endl;
+			if (is_r_comp[i]) {
+				//constraints.add_line(i);
 				solution[i] = r0;
 			} else if (is_z_comp[i]) {
 				constraints.add_line(i);
@@ -325,7 +346,7 @@ void ElasticProblem::setup_constraints(){
 
 			std::cout << "Constraint index: " << i << std::endl;
 		}
-		*/
+		//*/
 
 
 	}

@@ -80,12 +80,12 @@ private:
 	double tol = 1e-10;
 
 	double z0 = 0;
-	double r0 = .95;
+	double r0 = 1.0;
 	double Smax = 1.0;
 	int  refinelevel = 8;
 
 	double Emodv = 100000.0;
-	double homog = 0.0001;
+	double homog = 0.000;
 };
 }
 
