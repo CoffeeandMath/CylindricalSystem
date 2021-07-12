@@ -50,8 +50,10 @@ private:
 	void assemble_system();
 	void solve();
 	void output_results() const;
+	void output_data_csv();
 	void setup_constraints();
 	void newton_raphson();
+	void solve_path();
 
 
 
@@ -82,10 +84,13 @@ private:
 	double z0 = 0;
 	double r0 = 1.0;
 	double Smax = 1.0;
-	int  refinelevel = 8;
+	int  refinelevel = 6;
 
-	double Emodv = 100000.0;
-	double homog = 0.000;
+	double Emodv = 1.0;
+	double homog = 0.00;
+	double defmag = 0.0;
+
+	std::vector<double> linspace(double, double, int);
 };
 }
 

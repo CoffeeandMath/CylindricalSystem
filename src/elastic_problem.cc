@@ -12,7 +12,7 @@ using namespace dealii;
 
 
 ElasticProblem::ElasticProblem()
-: fe(FE_Q<DIM>(1), 1,FE_Q<DIM>(1), 1)
+: fe(FE_Q<DIM>(2), 1,FE_Q<DIM>(2), 1)
 , dof_handler(triangulation){}
 
 
@@ -28,14 +28,30 @@ ElasticProblem::ElasticProblem()
 // different, but that is something you need not care about. Let the library
 // handle the difficult things.
 
+
+void ElasticProblem::solve_path(){
+	double defmagmin = 0.0;
+	double defmagmax = .5;
+	int Nmax = 500;
+	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
+
+	int cntr = 0;
+	for (double defmagtemp :defmagvec){
+		cntr++;
+		defmag=defmagtemp;
+		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
+		newton_raphson();
+	}
+}
+
 void ElasticProblem::make_grid()
 {
 	GridGenerator::hyper_cube(triangulation, 0.0, Smax);
 	triangulation.refine_global(refinelevel);
 
 	std::cout << "   Number of active cells: " << triangulation.n_active_cells()
-							<< std::endl << "   Total number of cells: "
-							<< triangulation.n_cells() << std::endl;
+											<< std::endl << "   Total number of cells: "
+											<< triangulation.n_cells() << std::endl;
 }
 
 // @sect4{Step4::setup_system}
@@ -55,7 +71,7 @@ void ElasticProblem::setup_system()
 
 	Material_Vector_InPlane.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-            																														<< std::endl;
+            																																		<< std::endl;
 
 
 	DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
@@ -112,7 +128,7 @@ void ElasticProblem::assemble_system()
 	// do for us by also giving it the #update_quadrature_points flag:
 	FEValues<DIM> fe_values(fe,
 			quadrature_formula,
-			update_values | update_gradients |
+			update_values | update_gradients | update_hessians |
 			update_quadrature_points | update_JxW_values);
 
 	// We then again define the same abbreviation as in the previous program.
@@ -129,6 +145,8 @@ void ElasticProblem::assemble_system()
 	std::vector<double> z_q(n_q_points);
 	std::vector<Tensor<1,DIM>> dr_q(n_q_points);
 	std::vector<Tensor<1,DIM>> dz_q(n_q_points);
+	std::vector<Tensor<2,DIM>> ddr_q(n_q_points);
+	std::vector<Tensor<2,DIM>> ddz_q(n_q_points);
 
 
 
@@ -159,6 +177,9 @@ void ElasticProblem::assemble_system()
 		fe_values[r].get_function_gradients(solution,dr_q);
 		fe_values[z].get_function_gradients(solution,dz_q);
 
+		fe_values[r].get_function_hessians(solution,ddr_q);
+		fe_values[z].get_function_hessians(solution,ddz_q);
+
 		// Now we have to assemble the local matrix and right hand side. This is
 		// done exactly like in the previous example, but now we revert the
 		// order of the loops (which we can safely do since they are independent
@@ -173,15 +194,21 @@ void ElasticProblem::assemble_system()
 		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
 
 			Tensor<2,2> CovariantMetric;
+			Tensor<2,2> Covariant2Form;
 
 
 
 			double R = 1.2;
 
 			const auto &x_q = fe_values.quadrature_point(q_index);
-			double Rs = 1.0 - 1.0*pow(x_q[0]-0.5,2.0);
+			double Rs = 1.0 - defmag*pow(x_q[0]-0.5,2.0);
 			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
 			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index],2.0) - pow(Rs,2.0));
+
+
+			Covariant2Form[0][0] = dr_q[q_index][0]*ddz_q[q_index][0][0] - ddr_q[q_index][0][0]*dz_q[q_index][0];
+			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0];
+
 
 
 			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, CovariantMetric);
@@ -194,11 +221,19 @@ void ElasticProblem::assemble_system()
 				const Tensor<1,DIM> dR_i_q = fe_values[r].gradient(i,q_index);
 				const Tensor<1,DIM> dZ_i_q = fe_values[z].gradient(i,q_index);
 
+				const Tensor<2,DIM> ddR_i_q = fe_values[r].hessian(i, q_index);
+				const Tensor<2,DIM> ddZ_i_q = fe_values[z].hessian(i, q_index);
+
 
 				Tensor<2,2> d_CovariantMetric_i_q;
 				d_CovariantMetric_i_q[0][0] = dr_q[q_index][0]*dR_i_q[0] + dz_q[q_index][0]*dZ_i_q[0];
 				d_CovariantMetric_i_q[1][1] = r_q[q_index]*R_i_q;
 
+
+				Tensor<2,2> d_Covariant2Form_i_q;
+				d_Covariant2Form_i_q[0][0] = dR_i_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_i_q[0][0]
+						- ddR_i_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_i_q[0];
+				d_Covariant2Form_i_q[1][1] = R_i_q*dz_q[q_index][0] + r_q[q_index]*dZ_i_q[0];
 
 
 				for (const unsigned int j : fe_values.dof_indices()) {
@@ -209,36 +244,47 @@ void ElasticProblem::assemble_system()
 					const Tensor<1,DIM> dR_j_q = fe_values[r].gradient(j,q_index);
 					const Tensor<1,DIM> dZ_j_q = fe_values[z].gradient(j,q_index);
 
+					const Tensor<2,DIM> ddR_j_q = fe_values[r].hessian(j, q_index);
+					const Tensor<2,DIM> ddZ_j_q = fe_values[z].hessian(j, q_index);
+
 
 					Tensor<2,2> d_CovariantMetric_j_q;
 					d_CovariantMetric_j_q[0][0] = dr_q[q_index][0]*dR_j_q[0] + dz_q[q_index][0]*dZ_j_q[0];
 					d_CovariantMetric_j_q[1][1] = r_q[q_index]*R_j_q;
 
+
+					Tensor<2,2> d_Covariant2Form_j_q;
+					d_Covariant2Form_j_q[0][0] = dR_j_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_j_q[0][0]
+							- ddR_j_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_j_q[0];
+					d_Covariant2Form_j_q[1][1] = R_j_q*dz_q[q_index][0] + r_q[q_index]*dZ_j_q[0];
+
+
+
 					Tensor<2,2> dd_CovariantMetric_ij_q;
 					dd_CovariantMetric_ij_q[0][0] = dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0];
 					dd_CovariantMetric_ij_q[1][1] = R_i_q*R_j_q;
 
-
+					Tensor<2,2> dd_Covariant2Form_ij_q;
+					dd_Covariant2Form_ij_q[0][0] = dR_j_q[0] * ddZ_i_q[0][0] + dR_i_q[0] * ddZ_j_q[0][0]
+							- ddR_j_q[0][0] * dZ_i_q[0] - ddR_i_q[0][0]*dZ_j_q[0];
+					dd_Covariant2Form_ij_q[1][1] = R_j_q * dZ_i_q[0] + R_i_q * dZ_j_q[0];
 					/*
 					cell_matrix(i,j) += (dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0])*fe_values.JxW(q_index);
 					cell_matrix(i,j) += 100.0*(R_i_q*R_j_q + Z_i_q*Z_j_q)*fe_values.JxW(q_index);
 					 */
 					///*
 
+
 					cell_matrix(i,j) += r_q[q_index]*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
 					cell_matrix(i,j) += r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
 					cell_matrix(i,j) += R_i_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_j_q))*fe_values.JxW(q_index);
 					cell_matrix(i,j) += R_j_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q))*fe_values.JxW(q_index);
 
-
-
-
-					cell_matrix(i,j) += homog*Z_i_q*Z_j_q*fe_values.JxW(q_index);
 					//*/
 				}
 
 
-				 /*
+				/*
 				cell_rhs(i) += ((dr_q[q_index][0]*dR_i_q[0] + dz_q[q_index][0]*dZ_i_q[0]) * // phi_i(x_q)
 						fe_values.JxW(q_index));            // dx
 
@@ -246,14 +292,17 @@ void ElasticProblem::assemble_system()
 				 */
 
 				// /*
+
 				cell_rhs(i) += (r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
 				cell_rhs(i) += (R_i_q*Material_Vector_InPlane[cell_index].getQ2())*fe_values.JxW(q_index);
 
 
 
 
+
+
 				cell_rhs(i) += homog*Z_i_q*(z_q[q_index] - x_q[0])*fe_values.JxW(q_index);
-				 // */
+				// */
 
 
 
@@ -365,6 +414,77 @@ void ElasticProblem::setup_constraints(){
 
 }
 
+void ElasticProblem::output_data_csv(){
+	constraints.clear();
+
+	//DoFTools::make_hanging_node_constraints(dof_handler, constraints);
+	//VectorTools::interpolate_boundary_values(dof_handler,
+	//		1,
+	//		Functions::ZeroFunction<DIM>(DIM+5),
+	//		constraints);
+
+
+	const int ndofs = dof_handler.n_dofs();
+	// Constraint stuff
+	std::vector<bool> r_components = {true,false};
+	ComponentMask r_mask(r_components);
+
+	std::vector<bool> z_components = {false,true};
+	ComponentMask z_mask(z_components);
+
+
+	std::vector<bool> is_r_comp(ndofs, false);
+	DoFTools::extract_dofs(dof_handler, r_mask, is_r_comp);
+
+	std::vector<bool> is_z_comp(ndofs, false);
+	DoFTools::extract_dofs(dof_handler, z_mask, is_z_comp);
+
+
+	std::vector<Point<DIM>> support_points(ndofs);
+	MappingQ1<DIM> mapping;
+	DoFTools::map_dofs_to_support_points(mapping, dof_handler, support_points);
+
+	std::vector<double> rSvals;
+	std::vector<double> rvals;
+
+	std::vector<double> zSvals;
+	std::vector<double> zvals;
+
+	for (unsigned int i = 0; i < ndofs; i++) {
+
+		if (is_r_comp[i]){
+			rSvals.push_back(support_points[i][0]);
+			rvals.push_back(solution[i]);
+		} else if (is_z_comp[i]) {
+			zSvals.push_back(support_points[i][0]);
+			zvals.push_back(solution[i]);
+		}
+	}
+
+
+	std::string rname = "r_values.csv";
+	std::ofstream rfile;
+	rfile.open(rname);
+	rfile << "S_values,r_values\n";
+	for (unsigned int i = 0; i < rvals.size(); i++){
+		rfile << rSvals[i] << "," << rvals[i] << "\n";
+	}
+	rfile.close();
+
+	std::string zname = "z_values.csv";
+	std::ofstream zfile;
+	zfile.open(zname);
+	zfile << "S_values,z_values\n";
+	for (unsigned int i = 0; i < zvals.size(); i++){
+		zfile << zSvals[i] << "," << zvals[i] << "\n";
+	}
+	zfile.close();
+
+
+
+
+}
+
 
 // Solving the linear system of equations is something that looks almost
 // identical in most programs. In particular, it is dimension independent, so
@@ -434,7 +554,32 @@ double ElasticProblem::BilinearProduct(const Tensor<2,2> & F1, const Tensor<4,2>
 	}
 	return sum;
 }
+std::vector<double> ElasticProblem::linspace(double start_in, double end_in, int num_in)
+{
 
+	std::vector<double> linspaced;
+
+	double start = static_cast<double>(start_in);
+	double end = static_cast<double>(end_in);
+	double num = static_cast<double>(num_in);
+
+	if (num == 0) { return linspaced; }
+	if (num == 1)
+	{
+		linspaced.push_back(start);
+		return linspaced;
+	}
+
+	double delta = (end - start) / (num - 1);
+
+	for(int i=0; i < num-1; ++i)
+	{
+		linspaced.push_back(start + delta * i);
+	}
+	linspaced.push_back(end); // I want to ensure that start and end
+	// are exactly the same as the input
+	return linspaced;
+}
 // @sect4{Step4::output_results}
 
 // This function also does what the respective one did in step-3. No changes
@@ -478,8 +623,10 @@ void ElasticProblem::run()
 	setup_constraints();
 	//assemble_system();
 	//solve();
-	newton_raphson();
+	//newton_raphson();
+	solve_path();
 	output_results();
+	output_data_csv();
 }
 
 
