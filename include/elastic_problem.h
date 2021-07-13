@@ -81,11 +81,11 @@ private:
 
 
 	double tol = 1e-10;
-	double h = .01;
+	double h = .2;
 	double z0 = 0;
 	double r0 = 1.0;
 	double Smax = 1.0;
-	int  refinelevel = 8;
+	int refinelevel = 8;
 
 	double Emodv = 1.0;
 	double homog = 0.00;

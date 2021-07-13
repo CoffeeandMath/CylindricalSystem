@@ -31,7 +31,7 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 	double defmagmin = 0.0;
-	double defmagmax = 0.4;
+	double defmagmax = 0.3;
 	int Nmax = 500;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
