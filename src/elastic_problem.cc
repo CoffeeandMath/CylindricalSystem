@@ -12,7 +12,7 @@ using namespace dealii;
 
 
 ElasticProblem::ElasticProblem()
-: fe(FE_Q<DIM>(2), 1,FE_Q<DIM>(2), 1)
+: fe(FE_Q<DIM>(4), 1,FE_Q<DIM>(4), 1)
 , dof_handler(triangulation){}
 
 
@@ -31,7 +31,7 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 	double defmagmin = 0.0;
-	double defmagmax = .5;
+	double defmagmax = 0.4;
 	int Nmax = 500;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
@@ -70,6 +70,7 @@ void ElasticProblem::setup_system()
 	system_rhs.reinit(dof_handler.n_dofs());
 
 	Material_Vector_InPlane.resize(triangulation.n_active_cells());
+	Material_Vector_Bending.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
             																																		<< std::endl;
 
@@ -196,7 +197,7 @@ void ElasticProblem::assemble_system()
 			Tensor<2,2> CovariantMetric;
 			Tensor<2,2> Covariant2Form;
 
-
+			double hsc = pow(h,2.0);
 
 			double R = 1.2;
 
@@ -212,6 +213,7 @@ void ElasticProblem::assemble_system()
 
 
 			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, CovariantMetric);
+			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Covariant2Form);
 
 			for (const unsigned int i : fe_values.dof_indices())
 			{
@@ -280,6 +282,11 @@ void ElasticProblem::assemble_system()
 					cell_matrix(i,j) += R_i_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_j_q))*fe_values.JxW(q_index);
 					cell_matrix(i,j) += R_j_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q))*fe_values.JxW(q_index);
 
+					cell_matrix(i,j) += hsc*r_q[q_index]*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hsc*r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hsc*R_i_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_j_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hsc*R_j_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q))*fe_values.JxW(q_index);
+
 					//*/
 				}
 
@@ -295,6 +302,9 @@ void ElasticProblem::assemble_system()
 
 				cell_rhs(i) += (r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
 				cell_rhs(i) += (R_i_q*Material_Vector_InPlane[cell_index].getQ2())*fe_values.JxW(q_index);
+
+				cell_rhs(i) += hsc*(r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
+				cell_rhs(i) += hsc*(R_i_q*Material_Vector_Bending[cell_index].getQ2())*fe_values.JxW(q_index);
 
 
 
