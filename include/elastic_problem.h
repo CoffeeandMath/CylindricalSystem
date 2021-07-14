@@ -81,7 +81,7 @@ private:
 
 
 	double tol = 1e-10;
-	double h = .2;
+	double h = .01;
 	double z0 = 0;
 	double r0 = 1.0;
 	double Smax = 1.0;

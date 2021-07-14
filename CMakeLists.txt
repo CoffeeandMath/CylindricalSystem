@@ -1,8 +1,9 @@
 ##
 #  CMake script for the step-8 tutorial program:
 ##
-set(CMAKE_BUILD_TYPE Debug)
-#set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+#set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_FLAGS_RELEASE '-O3')
 # Set the name of the project and target:
 #SET(TARGET "src/step-8")
 

@@ -30,6 +30,9 @@ ElasticProblem::ElasticProblem()
 
 
 void ElasticProblem::solve_path(){
+
+	h = 0.2;
+
 	double defmagmin = 0.0;
 	double defmagmax = 0.3;
 	int Nmax = 500;
@@ -41,7 +44,22 @@ void ElasticProblem::solve_path(){
 		defmag=defmagtemp;
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
+		//output_data_csv();
 	}
+/*
+	double hmin = h;
+	double hmax = 0.1;
+	std::vector<double> hmagvec = linspace(hmin,hmax,Nmax);
+
+	cntr = 0;
+	for (double htemp : hmagvec){
+		cntr++;
+		h = htemp;
+		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
+		newton_raphson();
+		//output_data_csv();
+	}
+*/
 }
 
 void ElasticProblem::make_grid()
@@ -206,9 +224,10 @@ void ElasticProblem::assemble_system()
 			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
 			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index],2.0) - pow(Rs,2.0));
 
+			const double stretch_q = sqrt(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0));
 
-			Covariant2Form[0][0] = dr_q[q_index][0]*ddz_q[q_index][0][0] - ddr_q[q_index][0][0]*dz_q[q_index][0];
-			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0];
+			Covariant2Form[0][0] = (dr_q[q_index][0]*ddz_q[q_index][0][0] - ddr_q[q_index][0][0]*dz_q[q_index][0])/stretch_q;
+			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0]/stretch_q;
 
 
 
@@ -226,16 +245,19 @@ void ElasticProblem::assemble_system()
 				const Tensor<2,DIM> ddR_i_q = fe_values[r].hessian(i, q_index);
 				const Tensor<2,DIM> ddZ_i_q = fe_values[z].hessian(i, q_index);
 
+				const double dstretch_i_q = (dr_q[q_index][0]*dR_i_q[0] + dz_q[q_index][0]*dZ_i_q[0])/stretch_q;
 
 				Tensor<2,2> d_CovariantMetric_i_q;
 				d_CovariantMetric_i_q[0][0] = dr_q[q_index][0]*dR_i_q[0] + dz_q[q_index][0]*dZ_i_q[0];
 				d_CovariantMetric_i_q[1][1] = r_q[q_index]*R_i_q;
 
 
-				Tensor<2,2> d_Covariant2Form_i_q;
-				d_Covariant2Form_i_q[0][0] = dR_i_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_i_q[0][0]
+				const double db11hat_i_q = dR_i_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_i_q[0][0]
 						- ddR_i_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_i_q[0];
-				d_Covariant2Form_i_q[1][1] = R_i_q*dz_q[q_index][0] + r_q[q_index]*dZ_i_q[0];
+				const double db22hat_i_q = R_i_q*dz_q[q_index][0] + r_q[q_index]*dZ_i_q[0];
+				Tensor<2,2> d_Covariant2Form_i_q;
+				d_Covariant2Form_i_q[0][0] = (db11hat_i_q - Covariant2Form[0][0]*dstretch_i_q)/stretch_q;
+				d_Covariant2Form_i_q[1][1] = (db22hat_i_q - Covariant2Form[1][1]*dstretch_i_q)/stretch_q;
 
 
 				for (const unsigned int j : fe_values.dof_indices()) {
@@ -249,27 +271,35 @@ void ElasticProblem::assemble_system()
 					const Tensor<2,DIM> ddR_j_q = fe_values[r].hessian(j, q_index);
 					const Tensor<2,DIM> ddZ_j_q = fe_values[z].hessian(j, q_index);
 
+					const double dstretch_j_q = (dr_q[q_index][0]*dR_j_q[0] + dz_q[q_index][0]*dZ_j_q[0])/stretch_q;
 
 					Tensor<2,2> d_CovariantMetric_j_q;
 					d_CovariantMetric_j_q[0][0] = dr_q[q_index][0]*dR_j_q[0] + dz_q[q_index][0]*dZ_j_q[0];
 					d_CovariantMetric_j_q[1][1] = r_q[q_index]*R_j_q;
 
 
-					Tensor<2,2> d_Covariant2Form_j_q;
-					d_Covariant2Form_j_q[0][0] = dR_j_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_j_q[0][0]
+					const double db11hat_j_q = dR_j_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_j_q[0][0]
 							- ddR_j_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_j_q[0];
-					d_Covariant2Form_j_q[1][1] = R_j_q*dz_q[q_index][0] + r_q[q_index]*dZ_j_q[0];
+					const double db22hat_j_q = R_j_q*dz_q[q_index][0] + r_q[q_index]*dZ_j_q[0];
+					Tensor<2,2> d_Covariant2Form_j_q;
+					d_Covariant2Form_j_q[0][0] = (db11hat_j_q - Covariant2Form[0][0]*dstretch_j_q)/stretch_q;
+					d_Covariant2Form_j_q[1][1] = (db22hat_j_q - Covariant2Form[1][1]*dstretch_j_q)/stretch_q;
 
 
+					const double ddstretch_ij_q = (dR_j_q[0]*dR_i_q[0] + dZ_j_q[0]*dZ_i_q[0] - dstretch_i_q*dstretch_j_q)/stretch_q;
 
 					Tensor<2,2> dd_CovariantMetric_ij_q;
 					dd_CovariantMetric_ij_q[0][0] = dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0];
 					dd_CovariantMetric_ij_q[1][1] = R_i_q*R_j_q;
 
+
+					const double ddb11hat_ij_q = dR_j_q[0] * ddZ_i_q[0][0] + dR_i_q[0] * ddZ_j_q[0][0]
+										- ddR_j_q[0][0] * dZ_i_q[0] - ddR_i_q[0][0]*dZ_j_q[0];
+					const double ddb22hat_ij_q = R_j_q * dZ_i_q[0] + R_i_q * dZ_j_q[0];
+
 					Tensor<2,2> dd_Covariant2Form_ij_q;
-					dd_Covariant2Form_ij_q[0][0] = dR_j_q[0] * ddZ_i_q[0][0] + dR_i_q[0] * ddZ_j_q[0][0]
-							- ddR_j_q[0][0] * dZ_i_q[0] - ddR_i_q[0][0]*dZ_j_q[0];
-					dd_Covariant2Form_ij_q[1][1] = R_j_q * dZ_i_q[0] + R_i_q * dZ_j_q[0];
+					dd_Covariant2Form_ij_q[0][0] = (ddb11hat_ij_q - (d_Covariant2Form_i_q[0][0]*dstretch_j_q + d_Covariant2Form_j_q[0][0]*dstretch_i_q) - Covariant2Form[0][0] * ddstretch_ij_q)/stretch_q;
+					dd_Covariant2Form_ij_q[1][1] = (ddb22hat_ij_q - (d_Covariant2Form_i_q[1][1]*dstretch_j_q + d_Covariant2Form_j_q[1][1]*dstretch_i_q) - Covariant2Form[1][1] * ddstretch_ij_q)/stretch_q;
 					/*
 					cell_matrix(i,j) += (dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0])*fe_values.JxW(q_index);
 					cell_matrix(i,j) += 100.0*(R_i_q*R_j_q + Z_i_q*Z_j_q)*fe_values.JxW(q_index);
@@ -534,8 +564,8 @@ void ElasticProblem::newton_raphson() {
 		stepsize = sqrt(linearsolve.norm_sqr())/linearsolve.size();
 		//residual = step_direction;
 
-		std::cout << "Iteration: " << cntr << std::endl;
-		std::cout << "Step Size: " << stepsize<< std::endl;
+		//std::cout << "Iteration: " << cntr << std::endl;
+		//std::cout << "Step Size: " << stepsize<< std::endl;
 	}
 }
 
