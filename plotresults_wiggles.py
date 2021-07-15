@@ -26,8 +26,8 @@ ax1.legend(frameon=True)
 
 #ax1.invert_xaxis()
 
-ax2.plot(zvalues1['z_values'],rvalues1['r_values'], label='R vs Z Curve',color=color1)
-ax2.plot(zvalues2['z_values'],rvalues2['r_values'], label='R vs Z Curve',color=color2)
+ax2.plot(zvalues1['z_values'],rvalues1['r_values'], label='h = 0.01',color=color1)
+ax2.plot(zvalues2['z_values'],rvalues2['r_values'], label='h = 0.05',color=color2)
 ax2.set_xlabel('z')
 ax2.set_ylabel('r')
 ax2.legend()

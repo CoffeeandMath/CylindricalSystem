@@ -30,6 +30,7 @@
 #include <math.h>
 
 #include "material_class.h"
+#include "reference_configuration.h"
 
 #define DIM 1
 
@@ -54,6 +55,7 @@ private:
 	void setup_constraints();
 	void newton_raphson();
 	void solve_path();
+	void initialize_reference_config();
 
 
 
@@ -71,6 +73,7 @@ private:
 	AffineConstraints<double> constraints;
 	std::vector<Material_Class> Material_Vector_InPlane;
 	std::vector<Material_Class> Material_Vector_Bending;
+	std::vector<std::vector<Reference_Configuration>> Reference_Configuration_Vec;
 
 	Vector<double> solution;
 	Vector<double> linearsolve;

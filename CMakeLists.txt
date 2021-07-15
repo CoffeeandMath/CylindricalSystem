@@ -43,6 +43,10 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/include
 )
 
+ADD_LIBRARY(referenceclass ${CMAKE_SOURCE_DIR}/src/reference_configuration.cc)
+DEAL_II_SETUP_TARGET(referenceclass)
+
+
 ADD_LIBRARY(materialclass ${CMAKE_SOURCE_DIR}/src/material_class.cc)
 DEAL_II_SETUP_TARGET(materialclass)
 
@@ -53,6 +57,7 @@ DEAL_II_SETUP_TARGET(elasticproblemclass)
 
 ADD_EXECUTABLE(run ${CMAKE_SOURCE_DIR}/src/step-4.cc)
 DEAL_II_SETUP_TARGET(run)
+TARGET_LINK_LIBRARIES(elasticproblemclass referenceclass)
 TARGET_LINK_LIBRARIES(elasticproblemclass materialclass)
 TARGET_LINK_LIBRARIES(run elasticproblemclass)
 

@@ -46,7 +46,7 @@ void ElasticProblem::solve_path(){
 		newton_raphson();
 		//output_data_csv();
 	}
-/*
+	/*
 	double hmin = h;
 	double hmax = 0.1;
 	std::vector<double> hmagvec = linspace(hmin,hmax,Nmax);
@@ -59,7 +59,7 @@ void ElasticProblem::solve_path(){
 		newton_raphson();
 		//output_data_csv();
 	}
-*/
+	 */
 }
 
 void ElasticProblem::make_grid()
@@ -68,8 +68,8 @@ void ElasticProblem::make_grid()
 	triangulation.refine_global(refinelevel);
 
 	std::cout << "   Number of active cells: " << triangulation.n_active_cells()
-											<< std::endl << "   Total number of cells: "
-											<< triangulation.n_cells() << std::endl;
+													<< std::endl << "   Total number of cells: "
+													<< triangulation.n_cells() << std::endl;
 }
 
 // @sect4{Step4::setup_system}
@@ -80,17 +80,71 @@ void ElasticProblem::make_grid()
 // user's perspective is the number of cells resulting, which is much higher
 // in three than in two space dimensions!
 
+
+void ElasticProblem::initialize_reference_config(){
+
+
+	QGauss<DIM> quadrature_formula(fe.degree + 3);
+
+	// We wanted to have a non-constant right hand side, so we use an object of
+	// the class declared above to generate the necessary data. Since this right
+	// hand side object is only used locally in the present function, we declare
+	// it here as a local variable:
+
+	// Compared to the previous example, in order to evaluate the non-constant
+	// right hand side function we now also need the quadrature points on the
+	// cell we are presently on (previously, we only required values and
+	// gradients of the shape function from the FEValues object, as well as the
+	// quadrature weights, FEValues::JxW() ). We can tell the FEValues object to
+	// do for us by also giving it the #update_quadrature_points flag:
+	FEValues<DIM> fe_values(fe,
+			quadrature_formula,
+			update_values | update_gradients | update_hessians |
+			update_quadrature_points | update_JxW_values);
+
+	// We then again define the same abbreviation as in the previous program.
+	// The value of this variable of course depends on the dimension which we
+	// are presently using, but the FiniteElement class does all the necessary
+	// work for you and you don't have to care about the dimension dependent
+	// parts:
+	const unsigned int dofs_per_cell = fe.dofs_per_cell;
+	const unsigned int n_q_points    = quadrature_formula.size();
+
+
+
+	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+
+	for (const auto &cell : dof_handler.active_cell_iterators())
+	{
+		fe_values.reinit(cell);
+		unsigned int cell_index = cell->active_cell_index();
+
+
+		Reference_Configuration_Vec[cell_index].resize(n_q_points);
+		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
+			const auto &x_q = fe_values.quadrature_point(q_index);
+
+			Reference_Configuration_Vec[cell_index][q_index].set_point(x_q[0]);
+		}
+
+
+	}
+}
+
+
+
 void ElasticProblem::setup_system()
 {
 	dof_handler.distribute_dofs(fe);
 	solution.reinit(dof_handler.n_dofs());
 	linearsolve.reinit(dof_handler.n_dofs());
 	system_rhs.reinit(dof_handler.n_dofs());
-
+	Reference_Configuration_Vec.resize(triangulation.n_active_cells());
 	Material_Vector_InPlane.resize(triangulation.n_active_cells());
 	Material_Vector_Bending.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-            																																		<< std::endl;
+            																																				<< std::endl;
 
 
 	DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
@@ -253,7 +307,7 @@ void ElasticProblem::assemble_system()
 
 
 				const double db11hat_i_q = dR_i_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_i_q[0][0]
-						- ddR_i_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_i_q[0];
+																											- ddR_i_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_i_q[0];
 				const double db22hat_i_q = R_i_q*dz_q[q_index][0] + r_q[q_index]*dZ_i_q[0];
 				Tensor<2,2> d_Covariant2Form_i_q;
 				d_Covariant2Form_i_q[0][0] = (db11hat_i_q - Covariant2Form[0][0]*dstretch_i_q)/stretch_q;
@@ -279,7 +333,7 @@ void ElasticProblem::assemble_system()
 
 
 					const double db11hat_j_q = dR_j_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_j_q[0][0]
-							- ddR_j_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_j_q[0];
+																												- ddR_j_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_j_q[0];
 					const double db22hat_j_q = R_j_q*dz_q[q_index][0] + r_q[q_index]*dZ_j_q[0];
 					Tensor<2,2> d_Covariant2Form_j_q;
 					d_Covariant2Form_j_q[0][0] = (db11hat_j_q - Covariant2Form[0][0]*dstretch_j_q)/stretch_q;
@@ -294,7 +348,7 @@ void ElasticProblem::assemble_system()
 
 
 					const double ddb11hat_ij_q = dR_j_q[0] * ddZ_i_q[0][0] + dR_i_q[0] * ddZ_j_q[0][0]
-										- ddR_j_q[0][0] * dZ_i_q[0] - ddR_i_q[0][0]*dZ_j_q[0];
+																									- ddR_j_q[0][0] * dZ_i_q[0] - ddR_i_q[0][0]*dZ_j_q[0];
 					const double ddb22hat_ij_q = R_j_q * dZ_i_q[0] + R_i_q * dZ_j_q[0];
 
 					Tensor<2,2> dd_Covariant2Form_ij_q;
@@ -661,6 +715,7 @@ void ElasticProblem::run()
 
 	setup_system();
 	setup_constraints();
+	initialize_reference_config();
 	//assemble_system();
 	//solve();
 	//newton_raphson();
