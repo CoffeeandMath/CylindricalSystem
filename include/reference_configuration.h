@@ -31,6 +31,9 @@ public:
 
 private:
 	void calc_covariants();
+
+	double phifun(double);
+	double dphifun(double);
 	double defmag = 0.0;
 
 	double S_Point = 0.0;

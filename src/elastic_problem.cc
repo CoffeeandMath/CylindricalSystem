@@ -12,7 +12,7 @@ using namespace dealii;
 
 
 ElasticProblem::ElasticProblem()
-: fe(FE_Q<DIM>(4), 1,FE_Q<DIM>(4), 1)
+: fe(FE_Q<DIM>(2), 1,FE_Q<DIM>(2), 1)
 , dof_handler(triangulation){}
 
 
@@ -31,10 +31,10 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 
-	h = 0.2;
+	h = 0.02;
 
 	double defmagmin = 0.0;
-	double defmagmax = 0.3;
+	double defmagmax = 3.14159;
 	int Nmax = 500;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
@@ -42,6 +42,8 @@ void ElasticProblem::solve_path(){
 	for (double defmagtemp :defmagvec){
 		cntr++;
 		defmag=defmagtemp;
+		initialize_reference_config();
+
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
 		//output_data_csv();
@@ -84,7 +86,7 @@ void ElasticProblem::make_grid()
 void ElasticProblem::initialize_reference_config(){
 
 
-	QGauss<DIM> quadrature_formula(fe.degree + 3);
+	QGauss<DIM> quadrature_formula(fe.degree + quadegadd);
 
 	// We wanted to have a non-constant right hand side, so we use an object of
 	// the class declared above to generate the necessary data. Since this right
@@ -124,13 +126,15 @@ void ElasticProblem::initialize_reference_config(){
 		Reference_Configuration_Vec[cell_index].resize(n_q_points);
 		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
 			const auto &x_q = fe_values.quadrature_point(q_index);
-
+			Reference_Configuration_Vec[cell_index][q_index].set_deformation_param(defmag);
 			Reference_Configuration_Vec[cell_index][q_index].set_point(x_q[0]);
 		}
 
 
 	}
 }
+
+
 
 
 
@@ -186,7 +190,7 @@ void ElasticProblem::assemble_system()
 {
 	system_matrix = 0;
 	system_rhs    = 0;
-	QGauss<DIM> quadrature_formula(fe.degree + 3);
+	QGauss<DIM> quadrature_formula(fe.degree + quadegadd);
 
 	// We wanted to have a non-constant right hand side, so we use an object of
 	// the class declared above to generate the necessary data. Since this right
@@ -275,18 +279,19 @@ void ElasticProblem::assemble_system()
 
 			const auto &x_q = fe_values.quadrature_point(q_index);
 			double Rs = 1.0 - defmag*pow(x_q[0]-0.5,2.0);
-			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
-			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index],2.0) - pow(Rs,2.0));
+			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0)  );
+			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index],2.0));
 
 			const double stretch_q = sqrt(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0));
 
 			Covariant2Form[0][0] = (dr_q[q_index][0]*ddz_q[q_index][0][0] - ddr_q[q_index][0][0]*dz_q[q_index][0])/stretch_q;
 			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0]/stretch_q;
 
+			Tensor<2,2> InPlane = CovariantMetric - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_Metric();
+			Tensor<2,2> Bending = Covariant2Form - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_2Form();
 
-
-			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, CovariantMetric);
-			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Covariant2Form);
+			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, InPlane);
+			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Bending);
 
 			for (const unsigned int i : fe_values.dof_indices())
 			{

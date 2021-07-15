@@ -38,5 +38,5 @@ ax2.set_ylim([0, rvalues['r_values'].max()])
 #ax1.tight_layout()
 
 #ax1.savefig('plot.png')
-
+plt.gca().set_aspect('equal', adjustable='box')
 plt.show()

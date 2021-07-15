@@ -80,7 +80,7 @@ private:
 	Vector<double> system_rhs;
 
 	int Differentiability = 2;
-
+	int quadegadd = 1.0;
 
 
 	double tol = 1e-10;
