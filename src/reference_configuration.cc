@@ -28,13 +28,13 @@ void Reference_Configuration::set_point(double S){
 }
 
 void Reference_Configuration::calc_covariants(){
-	auto phifun = [](double s){
-		return pow(s,2.0);
+	auto phifun = [this](double s){
+		return defmag*pow(s,2.0);
 	};
 
 
-	auto dphifun = [](double s){
-		return 2.0*s;
+	auto dphifun = [this](double s)->double{
+		return defmag*2.0*s;
 	};
 	double dR = 0.0;
 	if (S_Point>0){
