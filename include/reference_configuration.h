@@ -27,6 +27,7 @@ public:
 	void set_deformation_param(double);
 	Tensor<2,2> get_Covariant_Metric();
 	Tensor<2,2> get_Covariant_2Form();
+	void set_R0(double);
 
 
 private:
@@ -43,7 +44,7 @@ private:
 	double phival = 0.0;
 	double dphidSval = 0.0;
 
-	double R0 = 1.0;
+	double R0 = 2.0;
 
 
 

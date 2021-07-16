@@ -80,7 +80,7 @@ private:
 	Vector<double> system_rhs;
 
 	int Differentiability = 2;
-	int quadegadd = 1.0;
+	int quadegadd = 1;
 
 
 	double tol = 1e-10;
@@ -88,10 +88,10 @@ private:
 	double z0 = 0;
 	double r0 = 1.0;
 	double Smax = 1.0;
-	int refinelevel = 8;
+	int refinelevel = 6;
 
 	double Emodv = 1.0;
-	double homog = 0.00;
+	double homog = 0.000;
 	double defmag = 0.0;
 
 	std::vector<double> linspace(double, double, int);

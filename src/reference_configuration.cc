@@ -55,7 +55,11 @@ void Reference_Configuration::calc_covariants(){
 }
 
 double Reference_Configuration::phifun(double s) {
-	return defmag*s;
+	double offset = defmag;
+	if (offset > 0.1) {
+		offset = .1;
+	}
+	return defmag*pow(s,1.0) + offset;
 }
 
 double Reference_Configuration::dphifun(double s) {
@@ -64,6 +68,10 @@ double Reference_Configuration::dphifun(double s) {
 
 void Reference_Configuration::set_deformation_param(double lambda){
 	defmag = lambda;
+}
+
+void Reference_Configuration::set_R0(double Rtemp){
+	R0 = Rtemp;
 }
 
 Tensor<2,2> Reference_Configuration::get_Covariant_Metric(){

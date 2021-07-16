@@ -31,11 +31,11 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 
-	h = 0.02;
+	h = 0.01;
 
 	double defmagmin = 0.0;
-	double defmagmax = 3.14159;
-	int Nmax = 500;
+	double defmagmax = 1.*3.14159;
+	int Nmax = 4000;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
 	int cntr = 0;
@@ -127,6 +127,7 @@ void ElasticProblem::initialize_reference_config(){
 		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
 			const auto &x_q = fe_values.quadrature_point(q_index);
 			Reference_Configuration_Vec[cell_index][q_index].set_deformation_param(defmag);
+			Reference_Configuration_Vec[cell_index][q_index].set_R0(r0);
 			Reference_Configuration_Vec[cell_index][q_index].set_point(x_q[0]);
 		}
 
@@ -274,8 +275,7 @@ void ElasticProblem::assemble_system()
 			Tensor<2,2> Covariant2Form;
 
 			double hsc = pow(h,2.0);
-
-			double R = 1.2;
+			double hscinv = 1.0/hsc;
 
 			const auto &x_q = fe_values.quadrature_point(q_index);
 			double Rs = 1.0 - defmag*pow(x_q[0]-0.5,2.0);
@@ -366,15 +366,15 @@ void ElasticProblem::assemble_system()
 					///*
 
 
-					cell_matrix(i,j) += r_q[q_index]*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
-					cell_matrix(i,j) += r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += R_i_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_j_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += R_j_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hscinv*r_q[q_index]*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hscinv*r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hscinv*R_i_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_j_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hscinv*R_j_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q))*fe_values.JxW(q_index);
 
-					cell_matrix(i,j) += hsc*r_q[q_index]*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hsc*r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hsc*R_i_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_j_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hsc*R_j_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += r_q[q_index]*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_i_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_j_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_j_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q))*fe_values.JxW(q_index);
 
 					//*/
 				}
@@ -389,18 +389,18 @@ void ElasticProblem::assemble_system()
 
 				// /*
 
-				cell_rhs(i) += (r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
-				cell_rhs(i) += (R_i_q*Material_Vector_InPlane[cell_index].getQ2())*fe_values.JxW(q_index);
+				cell_rhs(i) += hscinv*(r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
+				cell_rhs(i) += hscinv*(R_i_q*Material_Vector_InPlane[cell_index].getQ2())*fe_values.JxW(q_index);
 
-				cell_rhs(i) += hsc*(r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
-				cell_rhs(i) += hsc*(R_i_q*Material_Vector_Bending[cell_index].getQ2())*fe_values.JxW(q_index);
-
-
+				cell_rhs(i) += (r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
+				cell_rhs(i) += (R_i_q*Material_Vector_Bending[cell_index].getQ2())*fe_values.JxW(q_index);
 
 
 
 
-				cell_rhs(i) += homog*Z_i_q*(z_q[q_index] - x_q[0])*fe_values.JxW(q_index);
+
+
+				cell_rhs(i) += hscinv*homog*Z_i_q*(z_q[q_index] - x_q[0])*fe_values.JxW(q_index);
 				// */
 
 
