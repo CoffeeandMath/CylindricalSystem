@@ -59,11 +59,11 @@ double Reference_Configuration::phifun(double s) {
 	if (offset > 0.1) {
 		offset = .1;
 	}
-	return defmag*pow(s,1.0) + offset;
+	return defmag*sin(5.0*3.14159*s) + offset;
 }
 
 double Reference_Configuration::dphifun(double s) {
-	return defmag;
+	return defmag * 5.0*3.14159*cos(5.0*3.14159*s);
 }
 
 void Reference_Configuration::set_deformation_param(double lambda){
@@ -83,4 +83,8 @@ Tensor<2,2> Reference_Configuration::get_Covariant_2Form(){
 
 
 	return Form2;
+}
+
+double Reference_Configuration::get_R(){
+	return Rval;
 }

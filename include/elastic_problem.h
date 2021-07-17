@@ -76,6 +76,7 @@ private:
 	std::vector<std::vector<Reference_Configuration>> Reference_Configuration_Vec;
 
 	Vector<double> solution;
+	Vector<double> prev_solution;
 	Vector<double> linearsolve;
 	Vector<double> system_rhs;
 
@@ -86,12 +87,13 @@ private:
 	double tol = 1e-10;
 	double h = .01;
 	double z0 = 0;
-	double r0 = 1.0;
+	double r0 = .10;
 	double Smax = 1.0;
-	int refinelevel = 6;
+	int refinelevel = 8;
 
 	double Emodv = 1.0;
 	double homog = 0.000;
+	double dhomog = 0.000;
 	double defmag = 0.0;
 
 	std::vector<double> linspace(double, double, int);

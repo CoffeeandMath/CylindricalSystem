@@ -31,11 +31,13 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 
-	h = 0.01;
+	h = 0.02;
+	homog = 0.0;
+	dhomog = 0.0;
 
 	double defmagmin = 0.0;
-	double defmagmax = 1.*3.14159;
-	int Nmax = 4000;
+	double defmagmax = 0.2;
+	int Nmax = 500;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
 	int cntr = 0;
@@ -48,6 +50,7 @@ void ElasticProblem::solve_path(){
 		newton_raphson();
 		//output_data_csv();
 	}
+
 	/*
 	double hmin = h;
 	double hmax = 0.1;
@@ -143,6 +146,7 @@ void ElasticProblem::setup_system()
 {
 	dof_handler.distribute_dofs(fe);
 	solution.reinit(dof_handler.n_dofs());
+	prev_solution.reinit(dof_handler.n_dofs());
 	linearsolve.reinit(dof_handler.n_dofs());
 	system_rhs.reinit(dof_handler.n_dofs());
 	Reference_Configuration_Vec.resize(triangulation.n_active_cells());
@@ -221,8 +225,17 @@ void ElasticProblem::assemble_system()
 	Vector<double>     cell_rhs(dofs_per_cell);
 	std::vector<double> r_q(n_q_points);
 	std::vector<double> z_q(n_q_points);
+
+	std::vector<double> r_old_q(n_q_points);
+	std::vector<double> z_old_q(n_q_points);
+
 	std::vector<Tensor<1,DIM>> dr_q(n_q_points);
 	std::vector<Tensor<1,DIM>> dz_q(n_q_points);
+
+	std::vector<Tensor<1,DIM>> dr_old_q(n_q_points);
+	std::vector<Tensor<1,DIM>> dz_old_q(n_q_points);
+
+
 	std::vector<Tensor<2,DIM>> ddr_q(n_q_points);
 	std::vector<Tensor<2,DIM>> ddz_q(n_q_points);
 
@@ -251,6 +264,9 @@ void ElasticProblem::assemble_system()
 
 		fe_values[r].get_function_values(solution,r_q);
 		fe_values[z].get_function_values(solution,z_q);
+
+		fe_values[r].get_function_values(prev_solution,r_old_q);
+		fe_values[z].get_function_values(prev_solution,z_old_q);
 
 		fe_values[r].get_function_gradients(solution,dr_q);
 		fe_values[z].get_function_gradients(solution,dz_q);
@@ -292,6 +308,8 @@ void ElasticProblem::assemble_system()
 
 			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, InPlane);
 			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Bending);
+
+			double R_ref_q = Reference_Configuration_Vec[cell_index][q_index].get_R();
 
 			for (const unsigned int i : fe_values.dof_indices())
 			{
@@ -365,17 +383,19 @@ void ElasticProblem::assemble_system()
 					 */
 					///*
 
+					//Contribution of the in plane stretching
+					cell_matrix(i,j) += hscinv*R_ref_q*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hscinv*R_ref_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
 
-					cell_matrix(i,j) += hscinv*r_q[q_index]*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hscinv*r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hscinv*R_i_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_j_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hscinv*R_j_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q))*fe_values.JxW(q_index);
+					//Contribution of the bending component
+					cell_matrix(i,j) += R_ref_q*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_ref_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
 
-					cell_matrix(i,j) += r_q[q_index]*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
-					cell_matrix(i,j) += r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += R_i_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_j_q))*fe_values.JxW(q_index);
-					cell_matrix(i,j) += R_j_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q))*fe_values.JxW(q_index);
 
+
+					//Homogenization/drag term
+					cell_matrix(i,j) += hscinv*homog*R_ref_q*(R_i_q*R_j_q + Z_i_q*Z_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hscinv*dhomog*R_ref_q*(dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0])*fe_values.JxW(q_index);
 					//*/
 				}
 
@@ -389,18 +409,19 @@ void ElasticProblem::assemble_system()
 
 				// /*
 
-				cell_rhs(i) += hscinv*(r_q[q_index]*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
-				cell_rhs(i) += hscinv*(R_i_q*Material_Vector_InPlane[cell_index].getQ2())*fe_values.JxW(q_index);
+				cell_rhs(i) += hscinv*(R_ref_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
 
-				cell_rhs(i) += (r_q[q_index]*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
-				cell_rhs(i) += (R_i_q*Material_Vector_Bending[cell_index].getQ2())*fe_values.JxW(q_index);
+				cell_rhs(i) += (R_ref_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
 
 
+				cell_rhs(i) += hscinv*homog*R_ref_q*((r_q[q_index] - r_old_q[q_index])*R_i_q + (z_q[q_index] - z_old_q[q_index])*Z_i_q)*fe_values.JxW(q_index);
+				cell_rhs(i) += hscinv*dhomog*R_ref_q*((dr_q[q_index][0] -dr_old_q[q_index][0])*dR_i_q[0] + (dz_q[q_index][0] -dz_old_q[q_index][0])*dZ_i_q[0])*fe_values.JxW(q_index);
 
 
 
 
-				cell_rhs(i) += hscinv*homog*Z_i_q*(z_q[q_index] - x_q[0])*fe_values.JxW(q_index);
+
+				//cell_rhs(i) += hscinv*homog*Z_i_q*(z_q[q_index] - x_q[0])*fe_values.JxW(q_index);
 				// */
 
 
@@ -510,6 +531,7 @@ void ElasticProblem::setup_constraints(){
 			solution[i] = support_points[i][0];
 		}
 	}
+	prev_solution = solution;
 
 }
 
@@ -613,6 +635,7 @@ void ElasticProblem::solve()
 void ElasticProblem::newton_raphson() {
 	double stepsize = 2.0*tol;
 	int cntr = 0;
+	prev_solution = solution;
 	while (stepsize > tol) {
 		cntr++;
 		assemble_system();
@@ -626,6 +649,7 @@ void ElasticProblem::newton_raphson() {
 		//std::cout << "Iteration: " << cntr << std::endl;
 		//std::cout << "Step Size: " << stepsize<< std::endl;
 	}
+	std::cout << "Numer of Steps: " << cntr << std::endl;
 }
 
 

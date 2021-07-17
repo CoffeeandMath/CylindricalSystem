@@ -28,7 +28,7 @@ zn = np.zeros_like(xn)
 for i in range(len(x)):
     zn[i:i+1,:] = np.full_like(zn[0,:], y[i])
 
-ax1.plot(x, y)
+ax1.scatter(x, y)
 ax2.plot_surface(xn, yn, zn)
 ax2.set_xlim3d([ -1.0* plot_radius, plot_radius])
 ax2.set_ylim3d([-1.0* plot_radius, plot_radius])
