@@ -74,6 +74,8 @@ private:
 	std::vector<Material_Class> Material_Vector_InPlane;
 	std::vector<Material_Class> Material_Vector_Bending;
 	std::vector<std::vector<Reference_Configuration>> Reference_Configuration_Vec;
+	std::vector<std::vector<Tensor<2,2>>> epsilon_a;
+	std::vector<std::vector<Tensor<2,2>>> b_a;
 
 	Vector<double> solution;
 	Vector<double> prev_solution;

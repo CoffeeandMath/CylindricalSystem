@@ -127,6 +127,8 @@ void ElasticProblem::initialize_reference_config(){
 
 
 		Reference_Configuration_Vec[cell_index].resize(n_q_points);
+		epsilon_a[cell_index].resize(n_q_points);
+		b_a[cell_index].resize(n_q_points);
 		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
 			const auto &x_q = fe_values.quadrature_point(q_index);
 			Reference_Configuration_Vec[cell_index][q_index].set_deformation_param(defmag);
@@ -152,6 +154,8 @@ void ElasticProblem::setup_system()
 	Reference_Configuration_Vec.resize(triangulation.n_active_cells());
 	Material_Vector_InPlane.resize(triangulation.n_active_cells());
 	Material_Vector_Bending.resize(triangulation.n_active_cells());
+	epsilon_a.resize(triangulation.n_active_cells());
+	b_a.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
             																																				<< std::endl;
 
@@ -303,8 +307,8 @@ void ElasticProblem::assemble_system()
 			Covariant2Form[0][0] = (dr_q[q_index][0]*ddz_q[q_index][0][0] - ddr_q[q_index][0][0]*dz_q[q_index][0])/stretch_q;
 			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0]/stretch_q;
 
-			Tensor<2,2> InPlane = CovariantMetric - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_Metric();
-			Tensor<2,2> Bending = Covariant2Form - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_2Form();
+			Tensor<2,2> InPlane = CovariantMetric - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_Metric() - epsilon_a[cell_index][q_index];
+			Tensor<2,2> Bending = Covariant2Form - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_2Form() - b_a[cell_index][q_index];
 
 			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, InPlane);
 			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Bending);
