@@ -12,7 +12,7 @@ using namespace dealii;
 
 
 ElasticProblem::ElasticProblem()
-: fe(FE_Q<DIM>(2), 1,FE_Q<DIM>(2), 1)
+: fe(FE_Q<DIM>(1), 6)
 , dof_handler(triangulation){}
 
 
@@ -31,21 +31,23 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 
-	h = 0.02;
+	h = 0.01;
 	homog = 0.0;
 	dhomog = 0.0;
+	//r0 = 1.0;
+	initialize_reference_config();
 
 	double defmagmin = 0.0;
-	double defmagmax = 0.2;
-	int Nmax = 500;
+	double defmagmax = .05;
+	int Nmax = 50;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
 	int cntr = 0;
 	for (double defmagtemp :defmagvec){
 		cntr++;
 		defmag=defmagtemp;
-		initialize_reference_config();
-
+		//initialize_reference_config();
+		update_applied_strains();
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
 		//output_data_csv();
@@ -129,11 +131,16 @@ void ElasticProblem::initialize_reference_config(){
 		Reference_Configuration_Vec[cell_index].resize(n_q_points);
 		epsilon_a[cell_index].resize(n_q_points);
 		b_a[cell_index].resize(n_q_points);
+		fr[cell_index].resize(n_q_points);
+		fz[cell_index].resize(n_q_points);
 		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
 			const auto &x_q = fe_values.quadrature_point(q_index);
 			Reference_Configuration_Vec[cell_index][q_index].set_deformation_param(defmag);
 			Reference_Configuration_Vec[cell_index][q_index].set_R0(r0);
 			Reference_Configuration_Vec[cell_index][q_index].set_point(x_q[0]);
+
+			fr[cell_index][q_index] = 0.0;
+			fz[cell_index][q_index] = 0.0;
 		}
 
 
@@ -156,6 +163,8 @@ void ElasticProblem::setup_system()
 	Material_Vector_Bending.resize(triangulation.n_active_cells());
 	epsilon_a.resize(triangulation.n_active_cells());
 	b_a.resize(triangulation.n_active_cells());
+	fr.resize(triangulation.n_active_cells());
+	fz.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
             																																				<< std::endl;
 
@@ -177,6 +186,56 @@ void ElasticProblem::setup_system()
 
 }
 
+void ElasticProblem::update_applied_strains(){
+
+	QGauss<DIM> quadrature_formula(fe.degree + quadegadd);
+
+	// We wanted to have a non-constant right hand side, so we use an object of
+	// the class declared above to generate the necessary data. Since this right
+	// hand side object is only used locally in the present function, we declare
+	// it here as a local variable:
+
+	// Compared to the previous example, in order to evaluate the non-constant
+	// right hand side function we now also need the quadrature points on the
+	// cell we are presently on (previously, we only required values and
+	// gradients of the shape function from the FEValues object, as well as the
+	// quadrature weights, FEValues::JxW() ). We can tell the FEValues object to
+	// do for us by also giving it the #update_quadrature_points flag:
+	FEValues<DIM> fe_values(fe,
+			quadrature_formula,
+			update_values | update_gradients | update_hessians |
+			update_quadrature_points | update_JxW_values);
+
+	// We then again define the same abbreviation as in the previous program.
+	// The value of this variable of course depends on the dimension which we
+	// are presently using, but the FiniteElement class does all the necessary
+	// work for you and you don't have to care about the dimension dependent
+	// parts:
+	const unsigned int dofs_per_cell = fe.dofs_per_cell;
+	const unsigned int n_q_points    = quadrature_formula.size();
+
+
+
+	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+
+	for (const auto &cell : dof_handler.active_cell_iterators())
+	{
+		fe_values.reinit(cell);
+		unsigned int cell_index = cell->active_cell_index();
+
+
+
+		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
+			const auto &x_q = fe_values.quadrature_point(q_index);
+
+
+			fr[cell_index][q_index] = x_q[0]*defmag;
+			fz[cell_index][q_index] = 0.0;
+		}
+
+	}
+}
 
 // @sect4{Step4::assemble_system}
 
@@ -214,7 +273,7 @@ void ElasticProblem::assemble_system()
 	// do for us by also giving it the #update_quadrature_points flag:
 	FEValues<DIM> fe_values(fe,
 			quadrature_formula,
-			update_values | update_gradients | update_hessians |
+			update_values | update_gradients |
 			update_quadrature_points | update_JxW_values);
 
 	// We then again define the same abbreviation as in the previous program.
@@ -229,12 +288,19 @@ void ElasticProblem::assemble_system()
 	Vector<double>     cell_rhs(dofs_per_cell);
 	std::vector<double> r_q(n_q_points);
 	std::vector<double> z_q(n_q_points);
+	std::vector<double> lambda_r_q(n_q_points);
+	std::vector<double> lambda_z_q(n_q_points);
+	std::vector<double> xi_r_q(n_q_points);
+	std::vector<double> xi_z_q(n_q_points);
 
 	std::vector<double> r_old_q(n_q_points);
 	std::vector<double> z_old_q(n_q_points);
 
 	std::vector<Tensor<1,DIM>> dr_q(n_q_points);
 	std::vector<Tensor<1,DIM>> dz_q(n_q_points);
+
+	std::vector<Tensor<1,DIM>> dxi_r_q(n_q_points);
+	std::vector<Tensor<1,DIM>> dxi_z_q(n_q_points);
 
 	std::vector<Tensor<1,DIM>> dr_old_q(n_q_points);
 	std::vector<Tensor<1,DIM>> dz_old_q(n_q_points);
@@ -263,17 +329,32 @@ void ElasticProblem::assemble_system()
 
 		const FEValuesExtractors::Scalar r(0);
 		const FEValuesExtractors::Scalar z(1);
+		const FEValuesExtractors::Scalar lambda_r(2);
+		const FEValuesExtractors::Scalar lambda_z(3);
+		const FEValuesExtractors::Scalar xi_r(4);
+		const FEValuesExtractors::Scalar xi_z(5);
 
 
 
 		fe_values[r].get_function_values(solution,r_q);
 		fe_values[z].get_function_values(solution,z_q);
 
+		fe_values[lambda_r].get_function_values(solution,lambda_r_q);
+		fe_values[lambda_z].get_function_values(solution, lambda_z_q);
+		fe_values[xi_r].get_function_values(solution, xi_r_q);
+		fe_values[xi_z].get_function_values(solution, xi_z_q);
+
+
+
+
 		fe_values[r].get_function_values(prev_solution,r_old_q);
 		fe_values[z].get_function_values(prev_solution,z_old_q);
 
 		fe_values[r].get_function_gradients(solution,dr_q);
 		fe_values[z].get_function_gradients(solution,dz_q);
+
+		fe_values[xi_r].get_function_gradients(solution,dxi_r_q);
+		fe_values[xi_z].get_function_gradients(solution,dxi_z_q);
 
 		fe_values[r].get_function_hessians(solution,ddr_q);
 		fe_values[z].get_function_hessians(solution,ddz_q);
@@ -304,7 +385,7 @@ void ElasticProblem::assemble_system()
 
 			const double stretch_q = sqrt(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0));
 
-			Covariant2Form[0][0] = (dr_q[q_index][0]*ddz_q[q_index][0][0] - ddr_q[q_index][0][0]*dz_q[q_index][0])/stretch_q;
+			Covariant2Form[0][0] = (dr_q[q_index][0]*dxi_z_q[q_index][0] - dxi_r_q[q_index][0]*dz_q[q_index][0])/stretch_q;
 			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0]/stretch_q;
 
 			Tensor<2,2> InPlane = CovariantMetric - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_Metric() - epsilon_a[cell_index][q_index];
@@ -320,8 +401,17 @@ void ElasticProblem::assemble_system()
 				const double R_i_q = fe_values[r].value(i,q_index);
 				const double Z_i_q = fe_values[z].value(i,q_index);
 
+				const double Lambda_r_i_q = fe_values[lambda_r].value(i,q_index);
+				const double Lambda_z_i_q = fe_values[lambda_z].value(i,q_index);
+
+				const double Xi_r_i_q = fe_values[xi_r].value(i,q_index);
+				const double Xi_z_i_q = fe_values[xi_z].value(i,q_index);
+
 				const Tensor<1,DIM> dR_i_q = fe_values[r].gradient(i,q_index);
 				const Tensor<1,DIM> dZ_i_q = fe_values[z].gradient(i,q_index);
+
+				const Tensor<1,DIM> dXi_r_i_q = fe_values[xi_r].gradient(i,q_index);
+				const Tensor<1,DIM> dXi_z_i_q = fe_values[xi_z].gradient(i,q_index);
 
 				const Tensor<2,DIM> ddR_i_q = fe_values[r].hessian(i, q_index);
 				const Tensor<2,DIM> ddZ_i_q = fe_values[z].hessian(i, q_index);
@@ -333,8 +423,7 @@ void ElasticProblem::assemble_system()
 				d_CovariantMetric_i_q[1][1] = r_q[q_index]*R_i_q;
 
 
-				const double db11hat_i_q = dR_i_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_i_q[0][0]
-																											- ddR_i_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_i_q[0];
+				const double db11hat_i_q = dR_i_q[0] * dxi_z_q[q_index][0] + dr_q[q_index][0] * dXi_z_i_q[0] - dXi_r_i_q[0] * dz_q[q_index][0] - dxi_r_q[q_index][0] * dZ_i_q[0];
 				const double db22hat_i_q = R_i_q*dz_q[q_index][0] + r_q[q_index]*dZ_i_q[0];
 				Tensor<2,2> d_Covariant2Form_i_q;
 				d_Covariant2Form_i_q[0][0] = (db11hat_i_q - Covariant2Form[0][0]*dstretch_i_q)/stretch_q;
@@ -346,8 +435,19 @@ void ElasticProblem::assemble_system()
 					const double R_j_q = fe_values[r].value(j,q_index);
 					const double Z_j_q = fe_values[z].value(j,q_index);
 
+					const double Lambda_r_j_q = fe_values[lambda_r].value(j,q_index);
+					const double Lambda_z_j_q = fe_values[lambda_z].value(j,q_index);
+
+					const double Xi_r_j_q = fe_values[xi_r].value(j,q_index);
+					const double Xi_z_j_q = fe_values[xi_z].value(j,q_index);
+
 					const Tensor<1,DIM> dR_j_q = fe_values[r].gradient(j,q_index);
 					const Tensor<1,DIM> dZ_j_q = fe_values[z].gradient(j,q_index);
+
+					const Tensor<1,DIM> dXi_r_j_q = fe_values[xi_r].gradient(j,q_index);
+					const Tensor<1,DIM> dXi_z_j_q = fe_values[xi_z].gradient(j,q_index);
+
+
 
 					const Tensor<2,DIM> ddR_j_q = fe_values[r].hessian(j, q_index);
 					const Tensor<2,DIM> ddZ_j_q = fe_values[z].hessian(j, q_index);
@@ -359,13 +459,12 @@ void ElasticProblem::assemble_system()
 					d_CovariantMetric_j_q[1][1] = r_q[q_index]*R_j_q;
 
 
-					const double db11hat_j_q = dR_j_q[0] * ddz_q[q_index][0][0] + dr_q[q_index][0] * ddZ_j_q[0][0]
-																												- ddR_j_q[0][0] * dz_q[q_index][0] - ddr_q[q_index][0][0] * dZ_j_q[0];
+
+					const double db11hat_j_q = dR_j_q[0] * dxi_z_q[q_index][0] + dr_q[q_index][0] * dXi_z_j_q[0] - dXi_r_j_q[0] * dz_q[q_index][0] - dxi_r_q[q_index][0] * dZ_j_q[0];
 					const double db22hat_j_q = R_j_q*dz_q[q_index][0] + r_q[q_index]*dZ_j_q[0];
 					Tensor<2,2> d_Covariant2Form_j_q;
 					d_Covariant2Form_j_q[0][0] = (db11hat_j_q - Covariant2Form[0][0]*dstretch_j_q)/stretch_q;
 					d_Covariant2Form_j_q[1][1] = (db22hat_j_q - Covariant2Form[1][1]*dstretch_j_q)/stretch_q;
-
 
 					const double ddstretch_ij_q = (dR_j_q[0]*dR_i_q[0] + dZ_j_q[0]*dZ_i_q[0] - dstretch_i_q*dstretch_j_q)/stretch_q;
 
@@ -374,8 +473,7 @@ void ElasticProblem::assemble_system()
 					dd_CovariantMetric_ij_q[1][1] = R_i_q*R_j_q;
 
 
-					const double ddb11hat_ij_q = dR_j_q[0] * ddZ_i_q[0][0] + dR_i_q[0] * ddZ_j_q[0][0]
-																									- ddR_j_q[0][0] * dZ_i_q[0] - ddR_i_q[0][0]*dZ_j_q[0];
+					const double ddb11hat_ij_q = dR_j_q[0] * dXi_z_i_q[0] + dR_i_q[0] * dXi_z_j_q[0] - dXi_r_j_q[0] * dZ_i_q[0] - dXi_r_i_q[0]*dZ_j_q[0];
 					const double ddb22hat_ij_q = R_j_q * dZ_i_q[0] + R_i_q * dZ_j_q[0];
 
 					Tensor<2,2> dd_Covariant2Form_ij_q;
@@ -388,18 +486,30 @@ void ElasticProblem::assemble_system()
 					///*
 
 					//Contribution of the in plane stretching
-					cell_matrix(i,j) += hscinv*R_ref_q*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hscinv*R_ref_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_ref_q*( BilinearProduct(d_CovariantMetric_i_q,Material_Vector_InPlane[cell_index].getddQ2ddF(),d_CovariantMetric_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_ref_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),dd_CovariantMetric_ij_q))*fe_values.JxW(q_index);
 
 					//Contribution of the bending component
-					cell_matrix(i,j) += R_ref_q*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
-					cell_matrix(i,j) += R_ref_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hsc*R_ref_q*( BilinearProduct(d_Covariant2Form_i_q,Material_Vector_Bending[cell_index].getddQ2ddF(),d_Covariant2Form_j_q) )*fe_values.JxW(q_index);
+					cell_matrix(i,j) += hsc*R_ref_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),dd_Covariant2Form_ij_q))*fe_values.JxW(q_index);
 
 
 
 					//Homogenization/drag term
-					cell_matrix(i,j) += hscinv*homog*R_ref_q*(R_i_q*R_j_q + Z_i_q*Z_j_q)*fe_values.JxW(q_index);
-					cell_matrix(i,j) += hscinv*dhomog*R_ref_q*(dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0])*fe_values.JxW(q_index);
+					cell_matrix(i,j) += homog*R_ref_q*(R_i_q*R_j_q + Z_i_q*Z_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) += dhomog*R_ref_q*(dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0])*fe_values.JxW(q_index);
+
+
+
+					// Augmented Lagrangian terms
+					cell_matrix(i,j) -= Lambda_r_i_q*(dR_j_q[0] - Xi_r_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) -= Lambda_r_j_q*(dR_i_q[0] - Xi_r_i_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) -= Lambda_z_i_q*(dZ_j_q[0] - Xi_z_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) -= Lambda_z_j_q*(dZ_i_q[0] - Xi_z_i_q)*fe_values.JxW(q_index);
+
+					cell_matrix(i,j) += mu*(dR_i_q[0] - Xi_r_i_q)*(dR_j_q[0] - Xi_r_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) += mu*(dZ_i_q[0] - Xi_z_i_q)*(dZ_j_q[0] - Xi_z_j_q)*fe_values.JxW(q_index);
+
 					//*/
 				}
 
@@ -413,17 +523,26 @@ void ElasticProblem::assemble_system()
 
 				// /*
 
-				cell_rhs(i) += hscinv*(R_ref_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
+				cell_rhs(i) += (R_ref_q*(Tensor_Inner(Material_Vector_InPlane[cell_index].getdQ2dF(),d_CovariantMetric_i_q)))*fe_values.JxW(q_index);
 
-				cell_rhs(i) += (R_ref_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
-
-
-				cell_rhs(i) += hscinv*homog*R_ref_q*((r_q[q_index] - r_old_q[q_index])*R_i_q + (z_q[q_index] - z_old_q[q_index])*Z_i_q)*fe_values.JxW(q_index);
-				cell_rhs(i) += hscinv*dhomog*R_ref_q*((dr_q[q_index][0] -dr_old_q[q_index][0])*dR_i_q[0] + (dz_q[q_index][0] -dz_old_q[q_index][0])*dZ_i_q[0])*fe_values.JxW(q_index);
+				cell_rhs(i) += hsc*(R_ref_q*(Tensor_Inner(Material_Vector_Bending[cell_index].getdQ2dF(),d_Covariant2Form_i_q)))*fe_values.JxW(q_index);
 
 
+				cell_rhs(i) += homog*R_ref_q*((r_q[q_index] - r_old_q[q_index])*R_i_q + (z_q[q_index] - z_old_q[q_index])*Z_i_q)*fe_values.JxW(q_index);
+				cell_rhs(i) += dhomog*R_ref_q*((dr_q[q_index][0] -dr_old_q[q_index][0])*dR_i_q[0] + (dz_q[q_index][0] -dz_old_q[q_index][0])*dZ_i_q[0])*fe_values.JxW(q_index);
+
+				cell_rhs(i) -= R_ref_q*(fr[cell_index][q_index]*R_i_q + fz[cell_index][q_index]*Z_i_q)*fe_values.JxW(q_index);
 
 
+				// Augmented Lagruangian terms
+
+				cell_rhs(i) -= lambda_r_q[q_index]*(dR_i_q[0] - Xi_r_i_q)*fe_values.JxW(q_index);
+				cell_rhs(i) -= Lambda_r_i_q*(dr_q[q_index][0] - xi_r_q[q_index])*fe_values.JxW(q_index);
+				cell_rhs(i) -= lambda_z_q[q_index]*(dZ_i_q[0] - Xi_z_i_q)*fe_values.JxW(q_index);
+				cell_rhs(i) -= Lambda_z_i_q*(dz_q[q_index][0] - xi_z_q[q_index])*fe_values.JxW(q_index);
+
+				cell_rhs(i) += mu*(dR_i_q[0] - Xi_r_i_q)*(dr_q[q_index][0] - xi_r_q[q_index])*fe_values.JxW(q_index);
+				cell_rhs(i) += mu*(dZ_i_q[0] - Xi_z_i_q)*(dz_q[q_index][0] - xi_z_q[q_index])*fe_values.JxW(q_index);
 
 				//cell_rhs(i) += hscinv*homog*Z_i_q*(z_q[q_index] - x_q[0])*fe_values.JxW(q_index);
 				// */
@@ -462,10 +581,10 @@ void ElasticProblem::setup_constraints(){
 
 	const int ndofs = dof_handler.n_dofs();
 	// Constraint stuff
-	std::vector<bool> r_components = {true,false};
+	std::vector<bool> r_components = {true,false,false,false,false,false};
 	ComponentMask r_mask(r_components);
 
-	std::vector<bool> z_components = {false,true};
+	std::vector<bool> z_components = {false,true,false,false,false,false};
 	ComponentMask z_mask(z_components);
 
 
@@ -508,7 +627,7 @@ void ElasticProblem::setup_constraints(){
 		if (fabs(support_points[i][0]) < 1.0e-8) {
 			std::cout << support_points[i] << std::endl;
 			if (is_r_comp[i]) {
-				//constraints.add_line(i);
+				constraints.add_line(i);
 				solution[i] = r0;
 			} else if (is_z_comp[i]) {
 				constraints.add_line(i);
@@ -551,10 +670,10 @@ void ElasticProblem::output_data_csv(){
 
 	const int ndofs = dof_handler.n_dofs();
 	// Constraint stuff
-	std::vector<bool> r_components = {true,false};
+	std::vector<bool> r_components = {true,false,false,false,false,false};
 	ComponentMask r_mask(r_components);
 
-	std::vector<bool> z_components = {false,true};
+	std::vector<bool> z_components = {false,true,false,false,false,false};
 	ComponentMask z_mask(z_components);
 
 

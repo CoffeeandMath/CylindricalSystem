@@ -56,6 +56,7 @@ private:
 	void newton_raphson();
 	void solve_path();
 	void initialize_reference_config();
+	void update_applied_strains();
 
 
 
@@ -76,6 +77,8 @@ private:
 	std::vector<std::vector<Reference_Configuration>> Reference_Configuration_Vec;
 	std::vector<std::vector<Tensor<2,2>>> epsilon_a;
 	std::vector<std::vector<Tensor<2,2>>> b_a;
+	std::vector<std::vector<double>> fr;
+	std::vector<std::vector<double>> fz;
 
 	Vector<double> solution;
 	Vector<double> prev_solution;
@@ -83,7 +86,7 @@ private:
 	Vector<double> system_rhs;
 
 	int Differentiability = 2;
-	int quadegadd = 1;
+	int quadegadd = 3;
 
 
 	double tol = 1e-10;
@@ -91,12 +94,13 @@ private:
 	double z0 = 0;
 	double r0 = .10;
 	double Smax = 1.0;
-	int refinelevel = 8;
+	int refinelevel = 12;
 
 	double Emodv = 1.0;
 	double homog = 0.000;
 	double dhomog = 0.000;
 	double defmag = 0.0;
+	double mu = 10.0;
 
 	std::vector<double> linspace(double, double, int);
 };
