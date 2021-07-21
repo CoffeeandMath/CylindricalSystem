@@ -12,7 +12,7 @@ using namespace dealii;
 
 
 ElasticProblem::ElasticProblem()
-: fe(FE_Q<DIM>(1), 6)
+: fe(FE_Q<DIM>(2), 6)
 , dof_handler(triangulation){}
 
 
@@ -37,36 +37,24 @@ void ElasticProblem::solve_path(){
 	//r0 = 1.0;
 	initialize_reference_config();
 
-	double defmagmin = 0.0;
-	double defmagmax = .05;
-	int Nmax = 50;
+	double defmagmin = 0.00;
+	double defmagmax = 2.*pi;
+	int Nmax = 100;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
 	int cntr = 0;
 	for (double defmagtemp :defmagvec){
 		cntr++;
 		defmag=defmagtemp;
-		//initialize_reference_config();
+		initialize_reference_config();
 		update_applied_strains();
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
 		//output_data_csv();
 	}
 
-	/*
-	double hmin = h;
-	double hmax = 0.1;
-	std::vector<double> hmagvec = linspace(hmin,hmax,Nmax);
 
-	cntr = 0;
-	for (double htemp : hmagvec){
-		cntr++;
-		h = htemp;
-		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
-		newton_raphson();
-		//output_data_csv();
-	}
-	 */
+
 }
 
 void ElasticProblem::make_grid()
@@ -230,8 +218,8 @@ void ElasticProblem::update_applied_strains(){
 			const auto &x_q = fe_values.quadrature_point(q_index);
 
 
-			fr[cell_index][q_index] = x_q[0]*defmag;
-			fz[cell_index][q_index] = 0.0;
+			fr[cell_index][q_index] = 0.00*defmag;
+			fz[cell_index][q_index] = 0.*defmag;
 		}
 
 	}
@@ -627,7 +615,7 @@ void ElasticProblem::setup_constraints(){
 		if (fabs(support_points[i][0]) < 1.0e-8) {
 			std::cout << support_points[i] << std::endl;
 			if (is_r_comp[i]) {
-				constraints.add_line(i);
+				//constraints.add_line(i);
 				solution[i] = r0;
 			} else if (is_z_comp[i]) {
 				constraints.add_line(i);

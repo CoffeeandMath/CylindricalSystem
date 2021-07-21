@@ -1,5 +1,6 @@
 from mpl_toolkits.mplot3d import Axes3D
 import pandas as pd
+from matplotlib import cm
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -29,9 +30,9 @@ for i in range(len(x)):
     zn[i:i+1,:] = np.full_like(zn[0,:], y[i])
 
 ax1.scatter(x, y,s=1)
-ax2.plot_surface(xn, yn, zn)
-#ax2.set_xlim3d([ -1.0* plot_radius, plot_radius])
-#ax2.set_ylim3d([-1.0* plot_radius, plot_radius])
-#ax2.set_zlim3d([zmean - plot_radius, zmean + plot_radius])
+ax2.plot_surface(xn, yn, zn,linewidth=10, antialiased=True)
+ax2.set_xlim3d([ -1.0* plot_radius, plot_radius])
+ax2.set_ylim3d([-1.0* plot_radius, plot_radius])
+ax2.set_zlim3d([zmean - plot_radius, zmean + plot_radius])
 #plt.gca().set_aspect('equal', adjustable='box')
 plt.show()

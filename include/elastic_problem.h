@@ -33,6 +33,7 @@
 #include "reference_configuration.h"
 
 #define DIM 1
+#define pi 3.1415926535897932384626433832795028841971
 
 namespace Step4{
 	using namespace dealii;
@@ -85,7 +86,7 @@ private:
 	Vector<double> linearsolve;
 	Vector<double> system_rhs;
 
-	int Differentiability = 2;
+
 	int quadegadd = 3;
 
 
@@ -94,7 +95,7 @@ private:
 	double z0 = 0;
 	double r0 = .10;
 	double Smax = 1.0;
-	int refinelevel = 12;
+	int refinelevel = 6;
 
 	double Emodv = 1.0;
 	double homog = 0.000;

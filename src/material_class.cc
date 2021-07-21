@@ -115,22 +115,22 @@ void Material_Class::set_Params(const double Emodtemp, const double nutemp, cons
 }
 
 void Material_Class::Calc_Q2() {
-	//Q2 = 0.5*Emod*Tr2(F);
+	Q2 = 0.5*Emod*Tr2(F);
 
-	Q2 = 0.5*Emod*(pow(Tr(F),2.0) - 2.0*(1.0 - nu)*Det2D(F));
+	//Q2 = 0.5*Emod*(pow(Tr(F),2.0) - 2.0*(1.0 - nu)*Det2D(F));
 }
 
 
 void Material_Class::Calc_dQ2dF() {
 
-	//dQ2dF = Emod*F;
-	dQ2dF = Emod*(Tr(F)*Identity2D - (1.0 - nu)*Cofactor2D(F));
+	dQ2dF = Emod*F;
+	//dQ2dF = Emod*(Tr(F)*Identity2D - (1.0 - nu)*Cofactor2D(F));
 
 }
 
 void Material_Class::Calc_ddQ2ddF() {
-	//ddQ2ddF = Emod*(Identity4d2 );
-	ddQ2ddF = Emod*(Identity4d - (1.0 - nu)*Cofactor4d);
+	ddQ2ddF = Emod*(Identity4d2 );
+	//ddQ2ddF = Emod*(Identity4d - (1.0 - nu)*Cofactor4d);
 }
 
 double Material_Class::getQ2(){
