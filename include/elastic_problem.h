@@ -58,6 +58,7 @@ private:
 	void solve_path();
 	void initialize_reference_config();
 	void update_applied_strains();
+	void update_internal_metrics();
 
 
 
@@ -93,7 +94,7 @@ private:
 	double tol = 1e-10;
 	double h = .01;
 	double z0 = 0;
-	double r0 = .10;
+	double r0 = .30;
 	double Smax = 1.0;
 	int refinelevel = 6;
 
@@ -101,6 +102,7 @@ private:
 	double homog = 0.000;
 	double dhomog = 0.000;
 	double defmag = 0.0;
+	double defmag2 = 0.0;
 	double mu = 10.0;
 
 	std::vector<double> linspace(double, double, int);

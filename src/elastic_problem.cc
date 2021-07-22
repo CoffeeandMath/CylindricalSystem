@@ -39,7 +39,7 @@ void ElasticProblem::solve_path(){
 
 	double defmagmin = 0.00;
 	double defmagmax = 2.*pi;
-	int Nmax = 100;
+	int Nmax = 10;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
 	int cntr = 0;
@@ -53,6 +53,20 @@ void ElasticProblem::solve_path(){
 		//output_data_csv();
 	}
 
+
+	double defmag2min = 0.0;
+	double defmag2max = 0.2;
+	int N2max = 30;
+	std::vector<double> defmag2vec = linspace(defmag2min,defmag2max,N2max);
+
+	cntr = 0;
+	for (double defmag2temp : defmag2vec){
+		cntr++;
+		defmag2 = defmag2temp;
+		update_internal_metrics();
+		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
+		newton_raphson();
+	}
 
 
 }
@@ -135,7 +149,61 @@ void ElasticProblem::initialize_reference_config(){
 	}
 }
 
+void ElasticProblem::update_internal_metrics(){
 
+	QGauss<DIM> quadrature_formula(fe.degree + quadegadd);
+
+	// We wanted to have a non-constant right hand side, so we use an object of
+	// the class declared above to generate the necessary data. Since this right
+	// hand side object is only used locally in the present function, we declare
+	// it here as a local variable:
+
+	// Compared to the previous example, in order to evaluate the non-constant
+	// right hand side function we now also need the quadrature points on the
+	// cell we are presently on (previously, we only required values and
+	// gradients of the shape function from the FEValues object, as well as the
+	// quadrature weights, FEValues::JxW() ). We can tell the FEValues object to
+	// do for us by also giving it the #update_quadrature_points flag:
+	FEValues<DIM> fe_values(fe,
+			quadrature_formula,
+			update_values | update_gradients | update_hessians |
+			update_quadrature_points | update_JxW_values);
+
+	// We then again define the same abbreviation as in the previous program.
+	// The value of this variable of course depends on the dimension which we
+	// are presently using, but the FiniteElement class does all the necessary
+	// work for you and you don't have to care about the dimension dependent
+	// parts:
+	const unsigned int dofs_per_cell = fe.dofs_per_cell;
+	const unsigned int n_q_points    = quadrature_formula.size();
+
+
+
+	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+
+	for (const auto &cell : dof_handler.active_cell_iterators())
+	{
+		fe_values.reinit(cell);
+		unsigned int cell_index = cell->active_cell_index();
+
+		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
+			const auto &x_q = fe_values.quadrature_point(q_index);
+
+			Tensor<2,2> epsilontemp;
+			Tensor<2,2> btemp;
+			double Rval = Reference_Configuration_Vec[cell_index][q_index].get_R();
+			epsilontemp[0][0] = defmag2;
+			epsilontemp[1][1] = -defmag2*Rval*Rval;
+
+
+			epsilon_a[cell_index][q_index] = epsilontemp;
+			b_a[cell_index][q_index] = btemp;
+		}
+
+
+	}
+}
 
 
 
