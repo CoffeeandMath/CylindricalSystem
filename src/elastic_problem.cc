@@ -39,7 +39,7 @@ void ElasticProblem::solve_path(){
 
 	double defmagmin = 0.00;
 	double defmagmax = 2.*pi;
-	int Nmax = 10;
+	int Nmax = 100;
 	std::vector<double> defmagvec = linspace(defmagmin,defmagmax,Nmax);
 
 	int cntr = 0;
@@ -56,7 +56,7 @@ void ElasticProblem::solve_path(){
 
 	double defmag2min = 0.0;
 	double defmag2max = 0.2;
-	int N2max = 30;
+	int N2max = Nmax;
 	std::vector<double> defmag2vec = linspace(defmag2min,defmag2max,N2max);
 
 	cntr = 0;
@@ -193,8 +193,8 @@ void ElasticProblem::update_internal_metrics(){
 			Tensor<2,2> epsilontemp;
 			Tensor<2,2> btemp;
 			double Rval = Reference_Configuration_Vec[cell_index][q_index].get_R();
-			epsilontemp[0][0] = defmag2;
-			epsilontemp[1][1] = -defmag2*Rval*Rval;
+			epsilontemp[0][0] = 0.5*defmag2;
+			epsilontemp[1][1] = -defmag2;
 
 
 			epsilon_a[cell_index][q_index] = epsilontemp;
@@ -433,24 +433,26 @@ void ElasticProblem::assemble_system()
 
 			double hsc = pow(h,2.0);
 			double hscinv = 1.0/hsc;
+			double R_ref_q = Reference_Configuration_Vec[cell_index][q_index].get_R();
+
 
 			const auto &x_q = fe_values.quadrature_point(q_index);
 			double Rs = 1.0 - defmag*pow(x_q[0]-0.5,2.0);
-			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0)  );
-			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index],2.0));
+			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
+			CovariantMetric[1][1] = 0.5*(1.0 - pow(R_ref_q/r_q[q_index],2.0));
 
 			const double stretch_q = sqrt(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0));
 
 			Covariant2Form[0][0] = (dr_q[q_index][0]*dxi_z_q[q_index][0] - dxi_r_q[q_index][0]*dz_q[q_index][0])/stretch_q;
 			Covariant2Form[1][1] = r_q[q_index]*dz_q[q_index][0]/stretch_q;
 
-			Tensor<2,2> InPlane = CovariantMetric - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_Metric() - epsilon_a[cell_index][q_index];
+			Tensor<2,2> InPlane = CovariantMetric  - epsilon_a[cell_index][q_index];
 			Tensor<2,2> Bending = Covariant2Form - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_2Form() - b_a[cell_index][q_index];
 
 			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, InPlane);
 			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Bending);
 
-			double R_ref_q = Reference_Configuration_Vec[cell_index][q_index].get_R();
+
 
 			for (const unsigned int i : fe_values.dof_indices())
 			{
@@ -476,7 +478,7 @@ void ElasticProblem::assemble_system()
 
 				Tensor<2,2> d_CovariantMetric_i_q;
 				d_CovariantMetric_i_q[0][0] = dr_q[q_index][0]*dR_i_q[0] + dz_q[q_index][0]*dZ_i_q[0];
-				d_CovariantMetric_i_q[1][1] = r_q[q_index]*R_i_q;
+				d_CovariantMetric_i_q[1][1] = R_ref_q*R_ref_q*R_i_q/(pow(r_q[q_index],3.0));
 
 
 				const double db11hat_i_q = dR_i_q[0] * dxi_z_q[q_index][0] + dr_q[q_index][0] * dXi_z_i_q[0] - dXi_r_i_q[0] * dz_q[q_index][0] - dxi_r_q[q_index][0] * dZ_i_q[0];
@@ -512,7 +514,7 @@ void ElasticProblem::assemble_system()
 
 					Tensor<2,2> d_CovariantMetric_j_q;
 					d_CovariantMetric_j_q[0][0] = dr_q[q_index][0]*dR_j_q[0] + dz_q[q_index][0]*dZ_j_q[0];
-					d_CovariantMetric_j_q[1][1] = r_q[q_index]*R_j_q;
+					d_CovariantMetric_j_q[1][1] =  R_ref_q*R_ref_q*R_j_q/(pow(r_q[q_index],3.0));
 
 
 
@@ -526,7 +528,7 @@ void ElasticProblem::assemble_system()
 
 					Tensor<2,2> dd_CovariantMetric_ij_q;
 					dd_CovariantMetric_ij_q[0][0] = dR_i_q[0]*dR_j_q[0] + dZ_i_q[0]*dZ_j_q[0];
-					dd_CovariantMetric_ij_q[1][1] = R_i_q*R_j_q;
+					dd_CovariantMetric_ij_q[1][1] = -3.0*R_ref_q*R_ref_q*R_i_q*R_j_q/(pow(r_q[q_index],4.0));
 
 
 					const double ddb11hat_ij_q = dR_j_q[0] * dXi_z_i_q[0] + dR_i_q[0] * dXi_z_j_q[0] - dXi_r_j_q[0] * dZ_i_q[0] - dXi_r_i_q[0]*dZ_j_q[0];

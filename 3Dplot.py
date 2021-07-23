@@ -29,7 +29,13 @@ zn = np.zeros_like(xn)
 for i in range(len(x)):
     zn[i:i+1,:] = np.full_like(zn[0,:], y[i])
 
-ax1.scatter(x, y,s=1)
+ax1.scatter(x, y,s=1,color='blue')
+ax1.scatter(-x,y,s=1,color = 'blue')
+ax1.axvline(0, linewidth = 0.8)
+ax1.set_aspect('equal','box')
+ax1.set_xlabel('r')
+ax1.set_ylabel('z')
+
 ax2.plot_surface(xn, yn, zn,linewidth=10, antialiased=True)
 ax2.set_xlim3d([ -1.0* plot_radius, plot_radius])
 ax2.set_ylim3d([-1.0* plot_radius, plot_radius])
