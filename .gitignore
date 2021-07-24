@@ -7,3 +7,5 @@ run
 .project
 .cproject
 .settings/
+solutions/r_*
+solutions/z_*

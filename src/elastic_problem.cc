@@ -31,7 +31,7 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 
-	h = 0.01;
+	h = 0.02;
 	homog = 0.0;
 	dhomog = 0.0;
 	//r0 = 1.0;
@@ -55,17 +55,20 @@ void ElasticProblem::solve_path(){
 
 
 	double defmag2min = 0.0;
-	double defmag2max = 0.2;
-	int N2max = Nmax;
+	double defmag2max = 0.5;
+	int N2max = 1000;
 	std::vector<double> defmag2vec = linspace(defmag2min,defmag2max,N2max);
 
 	cntr = 0;
 	for (double defmag2temp : defmag2vec){
 		cntr++;
 		defmag2 = defmag2temp;
+		initialize_reference_config();
 		update_internal_metrics();
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
+
+		output_data_csv_iterative("solutions",cntr);
 	}
 
 
@@ -108,7 +111,7 @@ void ElasticProblem::initialize_reference_config(){
 	// do for us by also giving it the #update_quadrature_points flag:
 	FEValues<DIM> fe_values(fe,
 			quadrature_formula,
-			update_values | update_gradients | update_hessians |
+			update_values | update_gradients |
 			update_quadrature_points | update_JxW_values);
 
 	// We then again define the same abbreviation as in the previous program.
@@ -166,7 +169,7 @@ void ElasticProblem::update_internal_metrics(){
 	// do for us by also giving it the #update_quadrature_points flag:
 	FEValues<DIM> fe_values(fe,
 			quadrature_formula,
-			update_values | update_gradients | update_hessians |
+			update_values | update_gradients |
 			update_quadrature_points | update_JxW_values);
 
 	// We then again define the same abbreviation as in the previous program.
@@ -259,7 +262,7 @@ void ElasticProblem::update_applied_strains(){
 	// do for us by also giving it the #update_quadrature_points flag:
 	FEValues<DIM> fe_values(fe,
 			quadrature_formula,
-			update_values | update_gradients | update_hessians |
+			update_values | update_gradients |
 			update_quadrature_points | update_JxW_values);
 
 	// We then again define the same abbreviation as in the previous program.
@@ -613,10 +616,20 @@ void ElasticProblem::assemble_system()
 
 		cell->get_dof_indices(local_dof_indices);
 
-		constraints.distribute_local_to_global( cell_matrix, cell_rhs, local_dof_indices,system_matrix,system_rhs);
+		//constraints.distribute_local_to_global( cell_matrix, cell_rhs, local_dof_indices,system_matrix,system_rhs);
 
+		cell->get_dof_indices(local_dof_indices);
+		for (unsigned int i = 0; i < local_dof_indices.size(); i++) {
 
+			system_rhs[local_dof_indices[i]] += cell_rhs[i];
+			for (unsigned int j = 0; j < local_dof_indices.size(); j++) {
+				system_matrix.add(local_dof_indices[i],local_dof_indices[j],cell_matrix[i][j]);
+			}
+		}
 	}
+
+	constraints.condense(system_matrix);
+	constraints.condense(system_rhs);
 }
 
 
@@ -662,25 +675,6 @@ void ElasticProblem::setup_constraints(){
 
 		///*
 
-		if (i==2){
-			if (is_r_comp[i]) {
-				std::cout << "2 is an r comp" << std::endl;
-			} else if (is_z_comp[i]) {
-				std::cout << "2 is an z comp" << std::endl;
-			} else {
-				std::cout << "wtf is 2" << std::endl;
-			}
-			std::cout << support_points[i][0] << std::endl;
-		} else if (i == 3) {
-			if (is_r_comp[i]) {
-				std::cout << "3 is an r comp" << std::endl;
-			} else if (is_z_comp[i]) {
-				std::cout << "3 is an z comp" << std::endl;
-			} else {
-				std::cout << "wtf is 3" << std::endl;
-			}
-			std::cout << support_points[i][0] << std::endl;
-		}
 
 		if (fabs(support_points[i][0]) < 1.0e-8) {
 			std::cout << support_points[i] << std::endl;
@@ -689,6 +683,7 @@ void ElasticProblem::setup_constraints(){
 				solution[i] = r0;
 			} else if (is_z_comp[i]) {
 				constraints.add_line(i);
+				std::cout << i << std::endl;
 				solution[i] = z0;
 			}
 
@@ -716,8 +711,8 @@ void ElasticProblem::setup_constraints(){
 
 }
 
-void ElasticProblem::output_data_csv(){
-	constraints.clear();
+void ElasticProblem::output_data_csv( ){
+	//constraints.clear();
 
 	//DoFTools::make_hanging_node_constraints(dof_handler, constraints);
 	//VectorTools::interpolate_boundary_values(dof_handler,
@@ -788,6 +783,75 @@ void ElasticProblem::output_data_csv(){
 }
 
 
+void ElasticProblem::output_data_csv_iterative(std::string foldername,int iter){
+	//constraints.clear();
+
+	//DoFTools::make_hanging_node_constraints(dof_handler, constraints);
+	//VectorTools::interpolate_boundary_values(dof_handler,
+	//		1,
+	//		Functions::ZeroFunction<DIM>(DIM+5),
+	//		constraints);
+
+
+	const int ndofs = dof_handler.n_dofs();
+	// Constraint stuff
+	std::vector<bool> r_components = {true,false,false,false,false,false};
+	ComponentMask r_mask(r_components);
+
+	std::vector<bool> z_components = {false,true,false,false,false,false};
+	ComponentMask z_mask(z_components);
+
+
+	std::vector<bool> is_r_comp(ndofs, false);
+	DoFTools::extract_dofs(dof_handler, r_mask, is_r_comp);
+
+	std::vector<bool> is_z_comp(ndofs, false);
+	DoFTools::extract_dofs(dof_handler, z_mask, is_z_comp);
+
+
+	std::vector<Point<DIM>> support_points(ndofs);
+	MappingQ1<DIM> mapping;
+	DoFTools::map_dofs_to_support_points(mapping, dof_handler, support_points);
+
+	std::vector<double> rSvals;
+	std::vector<double> rvals;
+
+	std::vector<double> zSvals;
+	std::vector<double> zvals;
+
+	for (unsigned int i = 0; i < ndofs; i++) {
+
+		if (is_r_comp[i]){
+			rSvals.push_back(support_points[i][0]);
+			rvals.push_back(solution[i]);
+		} else if (is_z_comp[i]) {
+			zSvals.push_back(support_points[i][0]);
+			zvals.push_back(solution[i]);
+		}
+	}
+
+
+	std::string rname = foldername + "/r_values_" + std::to_string(iter) + ".csv";
+	std::ofstream rfile;
+	rfile.open(rname);
+	rfile << "S_values,r_values\n";
+	for (unsigned int i = 0; i < rvals.size(); i++){
+		rfile << rSvals[i] << "," << rvals[i] << "\n";
+	}
+	rfile.close();
+
+	std::string zname = foldername + "/z_values_" + std::to_string(iter) + ".csv";
+	std::ofstream zfile;
+	zfile.open(zname);
+	zfile << "S_values,z_values\n";
+	for (unsigned int i = 0; i < zvals.size(); i++){
+		zfile << zSvals[i] << "," << zvals[i] << "\n";
+	}
+	zfile.close();
+
+
+}
+
 // Solving the linear system of equations is something that looks almost
 // identical in most programs. In particular, it is dimension independent, so
 // this function is copied verbatim from the previous example.
@@ -796,13 +860,13 @@ void ElasticProblem::solve()
 
 
 
-	constraints.set_zero(linearsolve);
+	constraints.distribute(linearsolve);
 	linearsolve = 0;
 	SparseDirectUMFPACK a_direct;
 	a_direct.initialize(system_matrix);
 	a_direct.vmult(linearsolve,system_rhs);
 
-	constraints.set_zero(linearsolve);
+	constraints.distribute(linearsolve);
 	solution.add(-1.0,linearsolve);
 
 

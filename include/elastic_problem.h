@@ -53,6 +53,7 @@ private:
 	void solve();
 	void output_results() const;
 	void output_data_csv();
+	void output_data_csv_iterative(std::string,int);
 	void setup_constraints();
 	void newton_raphson();
 	void solve_path();
@@ -88,15 +89,16 @@ private:
 	Vector<double> system_rhs;
 
 
-	int quadegadd = 3;
+	int quadegadd = 2;
 
 
 	double tol = 1e-10;
 	double h = .01;
-	double z0 = 0;
+	double z0 = 0.;
 	double r0 = .10;
 	double Smax = 1.0;
-	int refinelevel = 6;
+	int refinelevel = 8;
+
 
 	double Emodv = 1.0;
 	double homog = 0.000;
