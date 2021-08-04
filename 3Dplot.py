@@ -15,7 +15,7 @@ rradius = np.max(rvalues['r_values'])
 zradius = np.max(zvalues['z_values'])
 plot_radius = np.max([rradius,zradius])
 
-fig = plt.figure(figsize=(12,6))
+fig = plt.figure(figsize=(12,6),dpi=400)
 ax1 = fig.add_subplot(121)
 ax2 = fig.add_subplot(122,projection='3d')
 y = zvalues['z_values']

@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
 from matplotlib import animation
+import numpy as np
 from numpy import random 
 import pandas as pd
 
 fig = plt.figure()
-ax1 = plt.axes(xlim=(-1, 1), ylim=(-0.1,1.2))
+ax1 = plt.axes(xlim=(0, 1), ylim=(-0.1,1.2))
 line, = ax1.plot([], [], lw=2)
 plt.xlabel('r')
 plt.ylabel('z')
@@ -27,9 +28,31 @@ def init():
 x1,y1 = [],[]
 x2,y2 = [],[]
 
+imax = 2000
+
+
+
 
 def integers(a, b):
     return list(range(a, b+1))
+
+rend = []
+zend = []
+rtop = []
+ztop = []
+for i in integers(1,imax):
+    rvalues = pd.read_csv('solutions/r_values_' + str(i) + '.csv')
+    zvalues = pd.read_csv('solutions/z_values_' + str(i) + '.csv')
+
+    indmax = np.argmax(zvalues['z_values'].values)
+    rtop.append(rvalues['r_values'].values[indmax])
+    ztop.append(zvalues['z_values'].values[indmax])
+    rend.append(rvalues['r_values'].values[-1])
+    zend.append(zvalues['z_values'].values[-1])
+
+
+ax1.plot(rend,zend,color='red')
+ax1.plot(rtop,ztop,color='green')
 
 def animate(i):
     rvalues = pd.read_csv('solutions/r_values_' + str(i) + '.csv')
@@ -52,7 +75,7 @@ def animate(i):
 
 # call the animator.  blit=True means only re-draw the parts that have changed.
 anim = animation.FuncAnimation(fig, animate, init_func=init,
-                               frames=integers(1,2000), interval=5, blit=True)
+                               frames=integers(1,imax), interval=5, blit=True)
 
 
 

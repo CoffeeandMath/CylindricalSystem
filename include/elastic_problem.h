@@ -95,7 +95,7 @@ private:
 	double tol = 1e-10;
 	double h = .01;
 	double z0 = 0.;
-	double r0 = .10;
+	double r0 = .30;
 	double Smax = 1.0;
 	int refinelevel = 8;
 

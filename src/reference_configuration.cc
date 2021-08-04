@@ -49,7 +49,7 @@ void Reference_Configuration::calc_covariants(){
 	Cov[1][1] = 0.5*pow(Rval,2.0);
 
 	Form2[0][0] = -dphifun(S_Point);
-	Form2[1][1] = Rval*cos(phifun(S_Point));
+	Form2[1][1] = cos(phifun(S_Point))/Rval;
 
 
 }
