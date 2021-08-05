@@ -31,7 +31,7 @@ ElasticProblem::ElasticProblem()
 
 void ElasticProblem::solve_path(){
 
-	h = 0.05;
+	h = 0.02;
 	homog = 0.0;
 	dhomog = 0.0;
 	//r0 = 1.0;
@@ -53,9 +53,9 @@ void ElasticProblem::solve_path(){
 		//output_data_csv();
 	}
 
-	homog = 0.01;
+	homog = 0.1;
 	double defmag2min = 0.0;
-	double defmag2max = 0.5;
+	double defmag2max = 0.6;
 	int N2max = 1000;
 	std::vector<double> defmag2vec = linspace(defmag2min,defmag2max,N2max);
 
@@ -453,12 +453,12 @@ void ElasticProblem::assemble_system()
 			Tensor<2,2> Covariant2Form;
 
 			double hsc = pow(h,2.0);
-			double hscinv = 1.0/hsc;
+
 			double R_ref_q = Reference_Configuration_Vec[cell_index][q_index].get_R();
 
 
 			const auto &x_q = fe_values.quadrature_point(q_index);
-			double Rs = 1.0 - defmag*pow(x_q[0]-0.5,2.0);
+
 			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
 			//CovariantMetric[1][1] = 0.5*(1.0 - pow(R_ref_q/r_q[q_index],2.0));
 			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index]/R_ref_q,2.0) - 1.0);
