@@ -1,7 +1,21 @@
 #ifndef ELASTIC_PROBLEM_CC_
 #define ELASTIC_PROBLEM_CC_
-#include "elastic_problem.h"
 
+#include "../include/elastic_problem.h"
+
+#include <deal.II/base/iterator_range.h>
+#include <deal.II/base/point.h>
+#include <deal.II/base/tensor.h>
+#include <deal.II/base/types.h>
+#include <deal.II/dofs/dof_accessor.templates.h>
+#include <deal.II/fe/component_mask.h>
+#include <deal.II/fe/fe_update_flags.h>
+#include <deal.II/fe/fe_values_extractors.h>
+#include <deal.II/fe/mapping_q1.h>
+#include <cmath>
+#include <string>
+#include <vector>
+#include <iomanip>  // std::setprecision()
 
 
 
@@ -12,7 +26,7 @@ using namespace dealii;
 
 
 ElasticProblem::ElasticProblem()
-: fe(FE_Q<DIM>(2), 6)
+: fe(FE_Q<DIM>(1), 6)
 , dof_handler(triangulation){}
 
 
@@ -36,7 +50,7 @@ void ElasticProblem::solve_path(){
 	dhomog = 0.0;
 	//r0 = 1.0;
 	initialize_reference_config();
-
+	construct_reduced_mappings();
 	double defmagmin = 0.00;
 	double defmagmax = 2.*pi;
 	int Nmax = 200;
@@ -53,13 +67,21 @@ void ElasticProblem::solve_path(){
 		//output_data_csv();
 	}
 
-	homog = 0.1;
+	homog = 0.0;
 	double defmag2min = 0.0;
-	double defmag2max = 0.6;
-	int N2max = 1000;
+	double defmag2max = 0.45;
+	int N2max = 600;
 	std::vector<double> defmag2vec = linspace(defmag2min,defmag2max,N2max);
 
 	cntr = 0;
+	fs::create_directory("solutions");
+	fs::remove_all("stabilitymatrices");
+	fs::create_directory("stabilitymatrices");
+
+
+
+	vector_to_csv(defmag2vec, "forward_defmag.csv");
+
 	for (double defmag2temp : defmag2vec){
 		cntr++;
 		defmag2 = defmag2temp;
@@ -67,15 +89,18 @@ void ElasticProblem::solve_path(){
 		update_internal_metrics();
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
-
+		assemble_constraint_system();
+		output_stability_matrices(cntr);
 		output_data_csv_iterative("solutions",cntr);
 	}
+
 
 
 	double defmag3start = defmag2max;
 	double defmag3end = defmag2min;
 	int N3max = N2max;
 	std::vector<double> defmag3vec = linspace(defmag3start,defmag3end,N3max);
+	vector_to_csv(defmag3vec, "reverse_defmag.csv");
 
 	for (double defmag3temp : defmag3vec) {
 		cntr++;
@@ -85,11 +110,20 @@ void ElasticProblem::solve_path(){
 		std::cout << "Solve Iteration: " << cntr << "---------------------------" << std::endl;
 		newton_raphson();
 
+
+		assemble_constraint_system();
+		output_stability_matrices(cntr);
 		output_data_csv_iterative("solutions",cntr);
 	}
 
 
 
+	vector_to_csv(x_global_to_reduced, "x_global_to_reduced.csv");
+	vector_to_csv(x_reduced_to_global, "x_reduced_to_global.csv");
+	vector_to_csv(xi_global_to_reduced, "xi_global_to_reduced.csv");
+	vector_to_csv(xi_reduced_to_global, "xi_reduced_to_global.csv");
+	sparse_matrix_to_csv(system_matrix,"spout.csv");
+	sparse_matrix_to_csv(constraint_matrix,"spconstraint.csv");
 
 
 }
@@ -100,8 +134,8 @@ void ElasticProblem::make_grid()
 	triangulation.refine_global(refinelevel);
 
 	std::cout << "   Number of active cells: " << triangulation.n_active_cells()
-													<< std::endl << "   Total number of cells: "
-													<< triangulation.n_cells() << std::endl;
+																															<< std::endl << "   Total number of cells: "
+																															<< triangulation.n_cells() << std::endl;
 }
 
 // @sect4{Step4::setup_system}
@@ -245,7 +279,7 @@ void ElasticProblem::setup_system()
 	fr.resize(triangulation.n_active_cells());
 	fz.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-            																																				<< std::endl;
+            																																																						<< std::endl;
 
 
 	DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
@@ -256,6 +290,7 @@ void ElasticProblem::setup_system()
 	sparsity_pattern.copy_from(dsp);
 
 	system_matrix.reinit(sparsity_pattern);
+	constraint_matrix.reinit(sparsity_pattern);
 
 	std::ofstream out("sparsity_pattern.svg");
 	sparsity_pattern.print_svg(out);
@@ -650,6 +685,223 @@ void ElasticProblem::assemble_system()
 }
 
 
+void ElasticProblem::assemble_constraint_system()
+{
+	constraint_matrix = 0;
+
+	QGauss<DIM> quadrature_formula(fe.degree + quadegadd);
+
+	// We wanted to have a non-constant right hand side, so we use an object of
+	// the class declared above to generate the necessary data. Since this right
+	// hand side object is only used locally in the present function, we declare
+	// it here as a local variable:
+
+	// Compared to the previous example, in order to evaluate the non-constant
+	// right hand side function we now also need the quadrature points on the
+	// cell we are presently on (previously, we only required values and
+	// gradients of the shape function from the FEValues object, as well as the
+	// quadrature weights, FEValues::JxW() ). We can tell the FEValues object to
+	// do for us by also giving it the #update_quadrature_points flag:
+	FEValues<DIM> fe_values(fe,
+			quadrature_formula,
+			update_values | update_gradients |
+			update_quadrature_points | update_JxW_values);
+
+	// We then again define the same abbreviation as in the previous program.
+	// The value of this variable of course depends on the dimension which we
+	// are presently using, but the FiniteElement class does all the necessary
+	// work for you and you don't have to care about the dimension dependent
+	// parts:
+	const unsigned int dofs_per_cell = fe.dofs_per_cell;
+	const unsigned int n_q_points    = quadrature_formula.size();
+
+	FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
+	Vector<double>     cell_rhs(dofs_per_cell);
+	std::vector<double> r_q(n_q_points);
+	std::vector<double> z_q(n_q_points);
+	std::vector<double> lambda_r_q(n_q_points);
+	std::vector<double> lambda_z_q(n_q_points);
+	std::vector<double> xi_r_q(n_q_points);
+	std::vector<double> xi_z_q(n_q_points);
+
+	std::vector<double> r_old_q(n_q_points);
+	std::vector<double> z_old_q(n_q_points);
+
+	std::vector<Tensor<1,DIM>> dr_q(n_q_points);
+	std::vector<Tensor<1,DIM>> dz_q(n_q_points);
+
+	std::vector<Tensor<1,DIM>> dxi_r_q(n_q_points);
+	std::vector<Tensor<1,DIM>> dxi_z_q(n_q_points);
+
+	std::vector<Tensor<1,DIM>> dr_old_q(n_q_points);
+	std::vector<Tensor<1,DIM>> dz_old_q(n_q_points);
+
+
+	std::vector<Tensor<2,DIM>> ddr_q(n_q_points);
+	std::vector<Tensor<2,DIM>> ddz_q(n_q_points);
+
+
+
+	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+	// Next, we again have to loop over all cells and assemble local
+	// contributions.  Note, that a cell is a quadrilateral in two space
+	// dimensions, but a hexahedron in 3D. In fact, the
+	// <code>active_cell_iterator</code> data type is something different,
+	// depending on the dimension we are in, but to the outside world they look
+	// alike and you will probably never see a difference. In any case, the real
+	// type is hidden by using `auto`:
+	for (const auto &cell : dof_handler.active_cell_iterators())
+	{
+		fe_values.reinit(cell);
+		unsigned int cell_index = cell->active_cell_index();
+		cell_matrix = 0;
+		cell_rhs    = 0;
+
+		const FEValuesExtractors::Scalar r(0);
+		const FEValuesExtractors::Scalar z(1);
+		const FEValuesExtractors::Scalar lambda_r(2);
+		const FEValuesExtractors::Scalar lambda_z(3);
+		const FEValuesExtractors::Scalar xi_r(4);
+		const FEValuesExtractors::Scalar xi_z(5);
+
+
+
+		fe_values[r].get_function_values(solution,r_q);
+		fe_values[z].get_function_values(solution,z_q);
+
+		fe_values[lambda_r].get_function_values(solution,lambda_r_q);
+		fe_values[lambda_z].get_function_values(solution, lambda_z_q);
+		fe_values[xi_r].get_function_values(solution, xi_r_q);
+		fe_values[xi_z].get_function_values(solution, xi_z_q);
+
+
+
+
+		fe_values[r].get_function_values(prev_solution,r_old_q);
+		fe_values[z].get_function_values(prev_solution,z_old_q);
+
+		fe_values[r].get_function_gradients(solution,dr_q);
+		fe_values[z].get_function_gradients(solution,dz_q);
+
+		fe_values[xi_r].get_function_gradients(solution,dxi_r_q);
+		fe_values[xi_z].get_function_gradients(solution,dxi_z_q);
+
+
+		// Now we have to assemble the local matrix and right hand side. This is
+		// done exactly like in the previous example, but now we revert the
+		// order of the loops (which we can safely do since they are independent
+		// of each other) and merge the loops for the local matrix and the local
+		// vector as far as possible to make things a bit faster.
+		//
+		// Assembling the right hand side presents the only significant
+		// difference to how we did things in step-3: Instead of using a
+		// constant right hand side with value 1, we use the object representing
+		// the right hand side and evaluate it at the quadrature points:
+
+		for (const unsigned int q_index : fe_values.quadrature_point_indices()){
+
+			Tensor<2,2> CovariantMetric;
+			Tensor<2,2> Covariant2Form;
+
+			double hsc = pow(h,2.0);
+
+			double R_ref_q = Reference_Configuration_Vec[cell_index][q_index].get_R();
+
+
+			const auto &x_q = fe_values.quadrature_point(q_index);
+
+			CovariantMetric[0][0] = 0.5*(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0) - 1.0 );
+			//CovariantMetric[1][1] = 0.5*(1.0 - pow(R_ref_q/r_q[q_index],2.0));
+			CovariantMetric[1][1] = 0.5*(pow(r_q[q_index]/R_ref_q,2.0) - 1.0);
+			const double stretch_q = sqrt(pow(dr_q[q_index][0],2.0) + pow(dz_q[q_index][0],2.0));
+
+			Covariant2Form[0][0] = (dr_q[q_index][0]*dxi_z_q[q_index][0] - dxi_r_q[q_index][0]*dz_q[q_index][0])/stretch_q;
+			Covariant2Form[1][1] = dz_q[q_index][0]/(r_q[q_index]*stretch_q);
+
+			Tensor<2,2> InPlane = CovariantMetric  - epsilon_a[cell_index][q_index];
+			Tensor<2,2> Bending = Covariant2Form - Reference_Configuration_Vec[cell_index][q_index].get_Covariant_2Form() - b_a[cell_index][q_index];
+
+			Material_Vector_InPlane[cell_index].set_Params(Emodv, 0.0, InPlane);
+			Material_Vector_Bending[cell_index].set_Params(Emodv, 0.0, Bending);
+
+
+
+			for (const unsigned int i : fe_values.dof_indices())
+			{
+				const double R_i_q = fe_values[r].value(i,q_index);
+				const double Z_i_q = fe_values[z].value(i,q_index);
+
+				const double Lambda_r_i_q = fe_values[lambda_r].value(i,q_index);
+				const double Lambda_z_i_q = fe_values[lambda_z].value(i,q_index);
+
+				const double Xi_r_i_q = fe_values[xi_r].value(i,q_index);
+				const double Xi_z_i_q = fe_values[xi_z].value(i,q_index);
+
+				const Tensor<1,DIM> dR_i_q = fe_values[r].gradient(i,q_index);
+				const Tensor<1,DIM> dZ_i_q = fe_values[z].gradient(i,q_index);
+
+				const Tensor<1,DIM> dXi_r_i_q = fe_values[xi_r].gradient(i,q_index);
+				const Tensor<1,DIM> dXi_z_i_q = fe_values[xi_z].gradient(i,q_index);
+
+
+				const double dstretch_i_q = (dr_q[q_index][0]*dR_i_q[0] + dz_q[q_index][0]*dZ_i_q[0])/stretch_q;
+
+				Tensor<2,2> d_CovariantMetric_i_q;
+
+
+
+				for (const unsigned int j : fe_values.dof_indices()) {
+
+					const double R_j_q = fe_values[r].value(j,q_index);
+					const double Z_j_q = fe_values[z].value(j,q_index);
+
+					const double Lambda_r_j_q = fe_values[lambda_r].value(j,q_index);
+					const double Lambda_z_j_q = fe_values[lambda_z].value(j,q_index);
+
+					const double Xi_r_j_q = fe_values[xi_r].value(j,q_index);
+					const double Xi_z_j_q = fe_values[xi_z].value(j,q_index);
+
+					const Tensor<1,DIM> dR_j_q = fe_values[r].gradient(j,q_index);
+					const Tensor<1,DIM> dZ_j_q = fe_values[z].gradient(j,q_index);
+
+					const Tensor<1,DIM> dXi_r_j_q = fe_values[xi_r].gradient(j,q_index);
+					const Tensor<1,DIM> dXi_z_j_q = fe_values[xi_z].gradient(j,q_index);
+
+
+
+
+
+					//cell_matrix(i,j) += mu*(dR_i_q[0] - Xi_r_i_q)*(dR_j_q[0] - Xi_r_j_q)*fe_values.JxW(q_index);
+					//cell_matrix(i,j) += mu*(dZ_i_q[0] - Xi_z_i_q)*(dZ_j_q[0] - Xi_z_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_ref_q*(dR_i_q[0] - Xi_r_i_q)*(Xi_r_j_q)*fe_values.JxW(q_index);
+					cell_matrix(i,j) += R_ref_q*(dZ_i_q[0] - Xi_z_i_q)*(Xi_z_j_q)*fe_values.JxW(q_index);
+					//*/
+				}
+
+
+
+
+
+
+			}
+		}
+
+		cell->get_dof_indices(local_dof_indices);
+
+		//constraints.distribute_local_to_global( cell_matrix, cell_rhs, local_dof_indices,system_matrix,system_rhs);
+
+		cell->get_dof_indices(local_dof_indices);
+		for (unsigned int i = 0; i < local_dof_indices.size(); i++) {
+			for (unsigned int j = 0; j < local_dof_indices.size(); j++) {
+				constraint_matrix.add(local_dof_indices[i],local_dof_indices[j],cell_matrix[i][j]);
+			}
+		}
+	}
+
+	constraints.condense(constraint_matrix);
+}
+
 // @sect4{Step4::solve}
 
 
@@ -909,7 +1161,7 @@ void ElasticProblem::newton_raphson() {
 		//std::cout << "Iteration: " << cntr << std::endl;
 		//std::cout << "Step Size: " << stepsize<< std::endl;
 	}
-	std::cout << "Numer of Steps: " << cntr << std::endl;
+	std::cout << "Number of Steps: " << cntr << std::endl;
 }
 
 
@@ -937,6 +1189,137 @@ double ElasticProblem::BilinearProduct(const Tensor<2,2> & F1, const Tensor<4,2>
 	}
 	return sum;
 }
+
+
+void ElasticProblem::construct_reduced_mappings(){
+
+
+	x_global_to_reduced.clear();
+	x_reduced_to_global.clear();
+	xi_global_to_reduced.clear();
+	xi_reduced_to_global.clear();
+
+
+	const int ndofs = dof_handler.n_dofs();
+
+	x_global_to_reduced.resize(ndofs);
+	xi_global_to_reduced.resize(ndofs);
+	// Constraint stuff
+	std::vector<bool> r_components = {true,false,false,false,false,false};
+	ComponentMask r_mask(r_components);
+
+	std::vector<bool> z_components = {false,true,false,false,false,false};
+	ComponentMask z_mask(z_components);
+
+	std::vector<bool> xi_r_components = {false,false,false,false,true,false};
+	ComponentMask xi_r_mask(xi_r_components);
+
+	std::vector<bool> xi_z_components = {false,false,false,false,false,true};
+	ComponentMask xi_z_mask(xi_z_components);
+
+
+	std::vector<bool> is_r_comp(ndofs, false);
+	DoFTools::extract_dofs(dof_handler, r_mask, is_r_comp);
+
+	std::vector<bool> is_z_comp(ndofs, false);
+	DoFTools::extract_dofs(dof_handler, z_mask, is_z_comp);
+
+	std::vector<bool> is_xi_r_comp(ndofs,false);
+	DoFTools::extract_dofs(dof_handler, xi_r_mask, is_xi_r_comp);
+
+	std::vector<bool> is_xi_z_comp(ndofs,false);
+	DoFTools::extract_dofs(dof_handler, xi_z_mask, is_xi_z_comp);
+
+
+	std::vector<Point<DIM>> support_points(ndofs);
+	MappingQ1<DIM> mapping;
+	DoFTools::map_dofs_to_support_points(mapping, dof_handler, support_points);
+
+	unsigned int xcntr = 0;
+	unsigned int xicntr = 0;
+	nxdofs = 0;
+	nxidofs = 0;
+
+	for (unsigned int i = 0; i < ndofs; i++) {
+
+		if (is_r_comp[i] || is_z_comp[i] ){
+			x_reduced_to_global.push_back(i);
+			x_global_to_reduced[i] = xcntr;
+			xcntr++;
+			nxdofs++;
+		} else {
+			x_global_to_reduced[i] = -1;
+		}
+
+		if (is_xi_r_comp[i] || is_xi_z_comp[i]){
+			xi_reduced_to_global.push_back(i);
+			xi_global_to_reduced[i] = xcntr;
+			xicntr++;
+			nxidofs++;
+		} else {
+			xi_global_to_reduced[i] = -1;
+		}
+
+	}
+
+
+}
+
+
+void ElasticProblem::sparse_matrix_to_csv(SparseMatrix<double> & SPMat, std::string strout){
+	std::ofstream rfile;
+	rfile.open(strout);
+
+
+	for (unsigned int row = 0; row < SPMat.m(); ++row)
+	{
+		const typename SparseMatrix<double>::const_iterator end_row = SPMat.end(row);
+		for (typename SparseMatrix<double>::const_iterator entry = SPMat.begin(row);
+				entry != end_row; ++entry)
+		{
+			if(fabs(entry->value()) > 1e-12 ){
+				//       system_matrix_petsc.set(row, entry->column(),entry->value());
+
+				rfile << std::setprecision(17) << row << "," << entry->column() << "," << entry->value() << '\n';
+			}
+
+		}
+	}
+	rfile.close();
+}
+
+template<typename T>
+void ElasticProblem::vector_to_csv(std::vector<T> & vec, std::string strout){
+	std::ofstream rfile;
+	rfile.open(strout);
+
+	for (unsigned int i = 0; i < vec.size(); ++i){
+		rfile << vec[i] << '\n';
+	}
+
+
+	rfile.close();
+}
+
+
+
+void ElasticProblem::output_stability_matrices(int cntr){
+	std::string n1 = "stabilitymatrices/x_global_to_reduced" + std::to_string(cntr) + ".csv";
+	std::string n2 = "stabilitymatrices/x_reduced_to_global" + std::to_string(cntr) + ".csv";
+	std::string n3 = "stabilitymatrices/xi_global_to_reduced" + std::to_string(cntr) + ".csv";
+	std::string n4 = "stabilitymatrices/xi_reduced_to_global" + std::to_string(cntr) + ".csv";
+	std::string n5 = "stabilitymatrices/spout" + std::to_string(cntr) + ".csv";
+	std::string n6 = "stabilitymatrices/spconstraint" + std::to_string(cntr) + ".csv";
+	vector_to_csv(x_global_to_reduced, n1);
+	vector_to_csv(x_reduced_to_global, n2);
+	vector_to_csv(xi_global_to_reduced, n3);
+	vector_to_csv(xi_reduced_to_global, n4);
+	sparse_matrix_to_csv(system_matrix, n5);
+	sparse_matrix_to_csv(constraint_matrix,n6);
+}
+
+
+
 std::vector<double> ElasticProblem::linspace(double start_in, double end_in, int num_in)
 {
 

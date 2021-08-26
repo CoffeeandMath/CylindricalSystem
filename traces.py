@@ -28,7 +28,7 @@ def init():
 x1,y1 = [],[]
 x2,y2 = [],[]
 
-imax = 2000
+imax = 1200
 
 
 
@@ -53,6 +53,7 @@ for i in integers(1,imax):
 
 ax1.plot(rend,zend,color='red')
 ax1.plot(rtop,ztop,color='green')
+
 
 def animate(i):
     rvalues = pd.read_csv('solutions/r_values_' + str(i) + '.csv')
@@ -79,7 +80,7 @@ anim = animation.FuncAnimation(fig, animate, init_func=init,
 
 
 
-#anim.save('animation.mp4', fps=80, dpi = 200)
+#anim.save('traces.mp4', fps=80, dpi = 200)
 plt.show()
 
 

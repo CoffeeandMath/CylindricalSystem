@@ -23,7 +23,7 @@ zvalues = pd.read_csv('z_values.csv')
 #ax1.invert_xaxis()
 
 
-ax1 = fig.gca(projection = '3d')
+#ax1 = fig.gca(projection = '3d')
 
 ax2.plot(zvalues['z_values'],rvalues['r_values'], label='R vs Z Curve',color='black')
 ax2.set_xlabel('z')
@@ -42,5 +42,5 @@ ax2.set_ylim([0, 1.5*rvalues['r_values'].max()])
 #ax1.tight_layout()
 
 #ax1.savefig('plot.png')
-plt.gca().set_aspect('equal', adjustable='box')
+#plt.gca().set_aspect('equal', adjustable='box')
 plt.show()

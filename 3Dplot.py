@@ -6,8 +6,8 @@ import numpy as np
 
 n = 256
 
-rvalues = pd.read_csv('r_values.csv')
-zvalues = pd.read_csv('z_values.csv')
+rvalues = pd.read_csv('build/r_values.csv')
+zvalues = pd.read_csv('build/z_values.csv')
 
 rmean = 0.0
 zmean = np.mean(zvalues['z_values'])

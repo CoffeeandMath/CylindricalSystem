@@ -6,10 +6,10 @@ import numpy as np
 plt.style.use('bmh')
 fig, (ax1,ax2) = plt.subplots(nrows=2, ncols=1)
 
-rvalues1 = pd.read_csv('r_values_0.01.csv')
-zvalues1 = pd.read_csv('z_values_0.01.csv')
-rvalues2 = pd.read_csv('r_values_0.05.csv')
-zvalues2 = pd.read_csv('z_values_0.05.csv')
+rvalues1 = pd.read_csv('build/r_values_0.01.csv')
+zvalues1 = pd.read_csv('build/z_values_0.01.csv')
+rvalues2 = pd.read_csv('build/r_values_0.05.csv')
+zvalues2 = pd.read_csv('build/z_values_0.05.csv')
 
 color1 = 'black'
 color2 = 'blue'

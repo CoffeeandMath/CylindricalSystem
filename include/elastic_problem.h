@@ -28,6 +28,9 @@
 #include <fstream>
 #include <iostream>
 #include <math.h>
+#include <cstdlib>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 #include "material_class.h"
 #include "reference_configuration.h"
@@ -60,8 +63,12 @@ private:
 	void initialize_reference_config();
 	void update_applied_strains();
 	void update_internal_metrics();
-
-
+	void construct_reduced_mappings();
+	void sparse_matrix_to_csv(SparseMatrix<double> &, std::string);
+	template<typename T>
+	void vector_to_csv(std::vector<T> & , std::string );
+	void assemble_constraint_system();
+	void output_stability_matrices(int);
 
 	double Tensor_Inner(const Tensor<2,2> &, const Tensor<2,2> &);
 	double BilinearProduct(const Tensor<2,2> &, const Tensor<4,2> &, const Tensor<2,2> &);
@@ -73,6 +80,7 @@ private:
 
 	SparsityPattern      sparsity_pattern;
 	SparseMatrix<double> system_matrix;
+	SparseMatrix<double> constraint_matrix;
 
 	AffineConstraints<double> constraints;
 	std::vector<Material_Class> Material_Vector_InPlane;
@@ -89,15 +97,15 @@ private:
 	Vector<double> system_rhs;
 
 
-	int quadegadd = 2;
+	int quadegadd = 3;
 
 
-	double tol = 1e-10;
+	double tol = 1e-13;
 	double h = .01;
 	double z0 = 0.;
 	double r0 = .30;
 	double Smax = 1.0;
-	int refinelevel = 8;
+	int refinelevel = 9;
 
 
 	double Emodv = 1.0;
@@ -108,6 +116,18 @@ private:
 	double mu = 10.0;
 
 	std::vector<double> linspace(double, double, int);
+
+
+
+	std::vector<int> x_global_to_reduced;
+	std::vector<int> xi_global_to_reduced;
+	std::vector<int> x_reduced_to_global;
+	std::vector<int> xi_reduced_to_global;
+
+	unsigned int nxdofs = 0;
+	unsigned int nxidofs = 0;
+
+
 };
 }
 

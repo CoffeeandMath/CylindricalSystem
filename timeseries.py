@@ -32,8 +32,8 @@ def integers(a, b):
     return list(range(a, b+1))
 
 def animate(i):
-    rvalues = pd.read_csv('solutions/r_values_' + str(i) + '.csv')
-    zvalues = pd.read_csv('solutions/z_values_' + str(i) + '.csv')
+    rvalues = pd.read_csv('build/solutions/r_values_' + str(i) + '.csv')
+    zvalues = pd.read_csv('build/solutions/z_values_' + str(i) + '.csv')
 
     x1 = rvalues['r_values']
     y1 = zvalues['z_values']
