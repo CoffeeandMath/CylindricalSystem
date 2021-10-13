@@ -69,14 +69,14 @@ void ElasticProblem::solve_path(){
 
 	homog = 0.0;
 	double defmag2min = 0.0;
-	double defmag2max = 0.45;
+	double defmag2max = 0.2;
 	int N2max = 600;
 	std::vector<double> defmag2vec = linspace(defmag2min,defmag2max,N2max);
 
 	cntr = 0;
-	fs::create_directory("solutions");
-	fs::remove_all("stabilitymatrices");
-	fs::create_directory("stabilitymatrices");
+	//fs::create_directory("solutions");
+	//fs::remove_all("stabilitymatrices");
+	//fs::create_directory("stabilitymatrices");
 
 
 
@@ -92,6 +92,7 @@ void ElasticProblem::solve_path(){
 		assemble_constraint_system();
 		output_stability_matrices(cntr);
 		output_data_csv_iterative("solutions",cntr);
+		save_current_state(cntr, (cntr==1));
 	}
 
 
@@ -114,6 +115,7 @@ void ElasticProblem::solve_path(){
 		assemble_constraint_system();
 		output_stability_matrices(cntr);
 		output_data_csv_iterative("solutions",cntr);
+		save_current_state(cntr, (cntr==1));
 	}
 
 
@@ -134,8 +136,8 @@ void ElasticProblem::make_grid()
 	triangulation.refine_global(refinelevel);
 
 	std::cout << "   Number of active cells: " << triangulation.n_active_cells()
-																															<< std::endl << "   Total number of cells: "
-																															<< triangulation.n_cells() << std::endl;
+																																	<< std::endl << "   Total number of cells: "
+																																	<< triangulation.n_cells() << std::endl;
 }
 
 // @sect4{Step4::setup_system}
@@ -279,7 +281,7 @@ void ElasticProblem::setup_system()
 	fr.resize(triangulation.n_active_cells());
 	fz.resize(triangulation.n_active_cells());
 	std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-            																																																						<< std::endl;
+            																																																								<< std::endl;
 
 
 	DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
@@ -1370,6 +1372,60 @@ void ElasticProblem::output_results() const
 	data_out.write_vtk(output);
 }
 
+void ElasticProblem::save_current_state(unsigned int indx, bool firstTime){
+
+	if (firstTime==true){
+		std::string dof_file_name = "deal.ii_solutions/dof_handler.dofdat";
+		std::ofstream dof_out_u(dof_file_name);
+		boost::archive::text_oarchive dof_ar_u(dof_out_u);
+		dof_handler.save(dof_ar_u,1);
+
+		std::string triang_file_name = "deal.ii_solutions/triang.tridat";
+		std::ofstream triang_out_u(triang_file_name);
+		boost::archive::text_oarchive triang_ar_u(triang_out_u);
+		triangulation.save(triang_ar_u,1);
+
+
+
+
+		Vector<double> R0vec;
+		R0vec.reinit(solution.size());
+		std::vector<Point<DIM>> support_points(dof_handler.n_dofs());
+		MappingQ1<DIM> mapping;
+		DoFTools::map_dofs_to_support_points(mapping, dof_handler, support_points);
+		std::vector<bool> r_components = {true,false,false,false,false,false};
+		ComponentMask r_mask(r_components);
+
+		std::vector<bool> is_r_comp(dof_handler.n_dofs(), false);
+		DoFTools::extract_dofs(dof_handler, r_mask, is_r_comp);
+
+
+		for (unsigned int i = 0; i < R0vec.size(); i++){
+
+			if (is_r_comp[i]) {
+				Reference_Configuration Refobj;
+				Refobj.set_deformation_param(defmag);
+				Refobj.set_R0(r0);
+				Refobj.set_point(support_points[i][0]);
+
+				R0vec[i] = Refobj.get_R();
+
+			}
+
+		}
+
+		std::string R0_file_name = "deal.ii_solutions/R0.soldat";
+		std::ofstream R0_out_u(R0_file_name);
+		boost::archive::text_oarchive R0_ar_u(R0_out_u);
+		R0vec.save(R0_ar_u,1);
+
+	}
+
+	std::string sol_file_name = "deal.ii_solutions/solution_" + std::to_string(indx) + ".soldat";
+	std::ofstream sol_out_u(sol_file_name);
+	boost::archive::text_oarchive sol_ar_u(sol_out_u);
+	solution.save(sol_ar_u,1);
+}
 
 
 // @sect4{Step4::run}

@@ -25,12 +25,13 @@
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/lac/sparse_direct.h>
+#include <boost/archive/text_oarchive.hpp>
 #include <fstream>
 #include <iostream>
 #include <math.h>
 #include <cstdlib>
 #include <filesystem>
-namespace fs = std::filesystem;
+//namespace fs = std::filesystem;
 
 #include "material_class.h"
 #include "reference_configuration.h"
@@ -69,6 +70,7 @@ private:
 	void vector_to_csv(std::vector<T> & , std::string );
 	void assemble_constraint_system();
 	void output_stability_matrices(int);
+	void save_current_state(unsigned int, bool);
 
 	double Tensor_Inner(const Tensor<2,2> &, const Tensor<2,2> &);
 	double BilinearProduct(const Tensor<2,2> &, const Tensor<4,2> &, const Tensor<2,2> &);
